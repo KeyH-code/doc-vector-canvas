@@ -1,6 +1,6 @@
 # 第一阶段实施计划：Personal Mode
 
-> **状态：** 2026-11-20 计划审核通过，A 批尚未开始。实施时使用 `executing-plans` 按 A → B → C → D 分批执行；每批完成后报告证据，等评审确认再继续。
+> **状态：** 2026-11-20 计划审核通过。A 批小样、自动化和 PowerPoint 检查已执行，真实 Windows 中文输入法待手测，见 [A 批验证记录](../../research/personal-mode-engine-spike.md)。B 批未开始；每批完成后报告证据，等评审确认再继续。
 
 **目标（Goal）：** 交付能独立完成绘制、编辑、保存重开和选区 SVG 导出的 Personal Mode，并让后续 Agent 可以复用按 ID 操作图元的入口。
 

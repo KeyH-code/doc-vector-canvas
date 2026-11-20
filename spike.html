@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fabric.js 画布技术验证</title>
+    <style>
+      body { margin: 24px; color: #162232; background: #f5f7fa; font: 15px/1.5 system-ui, sans-serif; }
+      h1 { margin: 0; font-size: 23px; }
+      p { margin-block: 6px 12px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      button, select, input { font: inherit; }
+      button, select { cursor: pointer; }
+      #stage { position: relative; width: 790px; height: 575px; outline: 1px solid #bcc9d7; overflow: hidden; background: white; }
+      #background { position: absolute; inset: 0; pointer-events: none; }
+      #stage .canvas-container { position: absolute !important; inset: 0; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 790px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Personal Mode · Fabric.js 技术小样</h1>
+      <p>仅用于技术验证，不是完整的 Personal Mode。</p>
+      <div class="actions">
+        <button id="recolor" type="button">按 ID 改色</button>
+        <button id="undo" type="button" disabled>撤销最近修改</button>
+        <label for="zoom">画布缩放</label>
+        <select id="zoom">
+          <option value="0.5">50%</option>
+          <option value="1" selected>100%</option>
+          <option value="2">200%</option>
+        </select>
+        <button id="pan" type="button" aria-pressed="false">平移视口</button>
+        <span>提交次数：<output id="count" aria-label="提交次数">0</output></span>
+      </div>
+      <div class="actions">
+        <button id="save" type="button">保存小样</button>
+        <label for="open">打开小样</label>
+        <input id="open" type="file" accept=".json,application/json" />
+        <button id="select-demo" type="button">选中验证图元</button>
+        <button id="export" type="button" disabled>导出选中 SVG</button>
+        <output id="file-status" aria-label="文件状态"></output>
+      </div>
+      <div id="stage" data-testid="stage">
+        <svg id="background" width="790" height="575" aria-hidden="true">
+          <g id="reference-view">
+            <rect x="28" y="28" width="330" height="240" fill="#eef5fa" stroke="#a5bdcb" />
+            <path d="M 45 92 H 195 M 120 48 V 138" fill="none" stroke="#90a9b6" />
+            <circle data-testid="reference-marker" cx="120" cy="92" r="5" fill="#64748b" />
+          </g>
+        </svg>
+        <canvas id="canvas" aria-label="图形编辑区"></canvas>
+      </div>
+      <details>
+        <summary>当前正式对象数据（不含渲染器状态）</summary>
+        <pre id="scene-state" data-testid="scene-state"></pre>
+      </details>
+    </main>
+    <script type="module" src="/spike/fabric-smoke.ts"></script>
+  </body>
+</html>
