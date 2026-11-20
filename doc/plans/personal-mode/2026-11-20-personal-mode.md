@@ -1,6 +1,6 @@
 # 第一阶段实施计划：Personal Mode
 
-> **状态：** 2026-11-20 计划审核通过。A 批小样、自动化和 PowerPoint 检查已执行，真实 Windows 中文输入法待手测，见 [A 批验证记录](../../research/personal-mode-engine-spike.md)。B 批未开始；每批完成后报告证据，等评审确认再继续。
+> **状态：** 2026-11-20 计划审核通过。A 批小样、自动化和 PowerPoint 检查已执行；参赛者实测确认真实中文输入能正常显示，候选取消及提交次数留到 B3 验收，见 [A 批验证记录](../../research/personal-mode-engine-spike.md)。B 批获准开工，正式页面仍须先通过预览审核。
 
 **目标（Goal）：** 交付能独立完成绘制、编辑、保存重开和选区 SVG 导出的 Personal Mode，并让后续 Agent 可以复用按 ID 操作图元的入口。
 
@@ -20,7 +20,7 @@
 | 批次 | 交付物 | 通过后才推进 |
 | --- | --- | --- |
 | A：引擎验证 | 可丢弃的小样、实际结果与选型决定 | Fabric 能服务自有模型、命令和未来背景叠加；不能就止步换路线。 |
-| B：最小闭环 | 矩形和中文文字可画、可编辑、可保存再打开；独立命令可按 ID 修改并一次撤销 | 将闭环演示给参赛者，确认持久化和命令边界。 |
+| B：最小闭环 | 矩形和中文文字可画、可编辑、可保存再打开；独立命令可按 ID 修改并一次撤销 | 先无页面跑通核心，后提交预览；参赛者明确批准预览整体风格后才开发正式页面。闭环演示通过再进入 C。 |
 | C：完整 Personal Mode | 补齐题面工具、对象操作、界面反馈、撤销/重做和 SVG | 对照 `P-01`～`P-09`，真实操作与测试都过。 |
 | D：交付验收 | 可复现 README、原创示例、测试与手测证据 | 清洁环境可重现，参赛者亲自确认 `P-10`，才转入 Agent Mode 的计划。 |
 
@@ -50,6 +50,8 @@
 4. A 批建议限时一个工作日。记录版本、命令/步骤、结果和小样提交引用；建议提交 `chore: validate personal canvas engine`。需修正时先隔离问题：Fabric 手势接管失败就验证备选，不把引擎绑定到领域模型；若考虑 Excalidraw SDK，必须重跑局部更新、历史、固定底图和 SVG 用例，不能默认 SDK 自动满足。用户审查 A 门后才开始 B。
 
 ## B：建立可保存的最小产品
+
+细化执行见 [B 批实施计划](2026-11-20-personal-mode-b.md)。B1、B2 先在 Node 中验证纯 TypeScript 画布核心，不新增独立后端。B3 分为 **B3a 页面预览**和 **B3b 正式界面**；未获参赛者明确批准不进入 B3b。
 
 ### B1. 实现对象、命令与撤销规则（P-06、P-09）
 
@@ -83,19 +85,23 @@ function applyAtomically<S, C>(
 
 ### B2. 实现项目文件，验证失败不会换掉画布（P-05）
 
-**文件：** `src/project/projectFile.ts`、`src/project/localFiles.ts`、`tests/unit/projectFile.test.ts`。
+**文件：** `src/project/projectFile.ts`、`src/project/projectSession.ts`、`tests/unit/projectFile.test.ts`、`tests/unit/projectFlow.test.ts`。
 
 1. 先写失败测试：项目往返保持 ID、数组顺序、中文与样式；拒绝坏 JSON、未知格式或版本、重复 ID、错误类型、无效坐标；同一输入不得在解码阶段更改当前场景。正常结构采用 `format`、`version` 和画布内容，不持久化手柄、选择、视口或撤销历史。
-2. 先解码并校验整个候选文件，再交给应用替换；有异常只返回可显示的中文错误。只读用户选中的本地文件；保存用 UTF-8 JSON 下载。保存状态基于上次成功触发下载或成功打开的正式内容，不宣称浏览器已覆盖或写入某个磁盘路径。取消文件选择、取消丢弃改动不清理当前画布或历史。
-3. 运行 `npm.cmd run test:unit -- tests/unit/projectFile.test.ts`，预期往返和错误用例全部通过；建议提交 `feat: add versioned local project files`。
+2. 先解码并校验整个候选内容，成功才替换；有异常返回可显示的中文错误。通过纯核心用例完成「新建 → 批次修改 → 撤销/重做 → 编码 → 新会话解码 → 再编辑」，不打开浏览器。
+3. 运行 `npm.cmd run test:unit -- tests/unit/projectFile.test.ts tests/unit/projectFlow.test.ts` 和 `npm.cmd run typecheck`，预期往返和错误用例全部通过；建议提交 `feat: verify local project workflow without UI`。核心检查通过才制作预览。
 
-### B3. 打通矩形、中文和可重开画布（P-02、P-05、P-08、P-09）
+### B3a. 提交页面预览并等待视觉批准
 
-**文件：** `index.html`、`src/main.tsx`、`src/App.tsx`、`src/editor/FabricSurface.ts`、`src/editor/useEditor.ts`、`src/ui/Toolbar.tsx`、`src/ui/FileMenu.tsx`、`src/styles.css`、`tests/e2e/personal-core.spec.ts`。
+用独立静态预览呈现空白、选中和文件状态，不接正式逻辑。展示并记录参赛者对具体版本的批准；未明确同意前停在此处，不创建正式页面。
+
+### B3b. 视觉通过后打通矩形、中文和可重开画布（P-02、P-05、P-08、P-09）
+
+**文件：** `index.html`、`src/main.tsx`、`src/App.tsx`、`src/editor/FabricSurface.ts`、`src/editor/useEditor.ts`、`src/ui/Toolbar.tsx`、`src/ui/FileMenu.tsx`、`src/project/localFiles.ts`、`src/styles.css`、`tests/e2e/personal-core.spec.ts`。
 
 1. 先写浏览器失败场景：点「矩形」并拖出；点「文字」输入 `帧数与预算`；选中矩形后拖动、缩放；项目下载后在全新上下文用文件输入打开；双击文字继续改写并再次保存。核对两个保存文件，而不只截图比对。
-2. 界面接到核心；指针移动只改预览，完成手势才提交正式数据；无变化不提交。集中处理屏幕坐标与场景坐标转换、渲染回环和监听器清理；更新图元时尽量保留选择。文本结束编辑后提交，输入法组合过程中不响应画布快捷键。打开成功才替换内容并清空旧历史。
-3. 执行 `npm.cmd run test:e2e -- personal-core.spec.ts`、`npm.cmd run test:unit`、`npm.cmd run typecheck`、`npm.cmd run build`；按 B 门手测真实中文并演示命令批次。预期实际重开后仍能编辑，非法批次不动任何对象。建议提交 `feat: complete editable local canvas loop`。
+2. 界面接到核心；指针移动只改预览，完成手势才提交正式数据；无变化不提交。集中处理屏幕坐标与场景坐标转换、渲染回环和监听器清理；更新图元时尽量保留选择。文本结束编辑后提交，输入法组合过程中不响应画布快捷键。只读用户选中的文件，UTF-8 JSON 保存为浏览器下载，不宣称覆盖原路径；取消选文件或取消丢弃改动不改变画布。打开成功才替换内容并清空旧历史。
+3. 执行 `npm.cmd run test:e2e -- personal-core.spec.ts`、`npm.cmd run test:unit`、`npm.cmd run typecheck`、`npm.cmd run build`；按 B 门手测真实中文并演示命令批次。补测 A 批延后的两项：取消候选不残留未确认的拼音，结束有实际改动的一轮文字编辑只新增一步历史。预期实际重开后仍能编辑，非法批次不动任何对象。建议提交 `feat: complete editable local canvas loop`。
 
 ## C：补齐比赛题面与项目扩展
 
