@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>文档矢量画布 · B3a 页面预览</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { color-scheme: light; --paper: #faf9f6; --ink: #242827; --muted: #626d67; --line: #dedfd8; --green: #214d40; --active: #3e7764; --white: #fffdfa; font: 14px/1.5 system-ui, 'Microsoft YaHei', sans-serif; }
+    body { margin: 0; color: var(--ink); background: var(--paper); }
+    button { font: inherit; }
+    .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+    .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .review { padding: 9px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #263330; color: #f8f7f2; }
+    .review strong { font-size: 12px; letter-spacing: .09em; }
+    .review small { margin-left: 10px; color: #ced9d2; }
+    .states { display: flex; flex-wrap: wrap; gap: 4px; }
+    .states button { background: transparent; border: 1px solid transparent; border-radius: 5px; color: #dee9e2; padding: 4px 10px; cursor: pointer; }
+    .states button[aria-pressed='true'] { background: #476258; border-color: #749284; color: white; }
+    button:focus-visible { outline: 2px solid #45937c; outline-offset: 2px; }
+    .editor { min-height: calc(100vh - 48px); display: grid; grid-template-rows: auto auto 1fr auto; }
+    .header { min-height: 65px; padding: 11px 24px; background: var(--white); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
+    .brand, .file, .actions, .tool-group { display: flex; align-items: center; gap: 9px; }
+    .brand { font-weight: 700; white-space: nowrap; }
+    .logo { background: var(--green); color: #fffdfa; width: 33px; height: 33px; border-radius: 8px; display: grid; place-items: center; }
+    .file { gap: 8px; color: var(--muted); }
+    .file b { color: var(--ink); font-weight: 600; }
+    .dot { width: 7px; height: 7px; border-radius: 100%; background: #6a8978; }
+    .dirty .dot { background: #a26326; }
+    .fake { display: inline-flex; gap: 6px; align-items: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--white); color: var(--ink); white-space: nowrap; }
+    .fake.primary { background: var(--green); border-color: var(--green); color: white; }
+    .toolstrip { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; padding: 8px 24px; border-bottom: 1px solid var(--line); background: var(--white); }
+    .tool-group { gap: 5px; }
+    .tool { border-color: transparent; }
+    .tool.active { color: var(--green); background: #e7f0ea; border-color: #bed0c3; font-weight: 650; }
+    .tool.inactive { color: #767e79; }
+    .sep { height: 23px; width: 1px; background: var(--line); margin-inline: 4px; }
+    .space { position: relative; min-height: 490px; display: grid; place-items: center; padding: 45px 24px; overflow: hidden; background: #eeefe9; background-image: radial-gradient(#bbc7bb 1px, transparent 1px); background-size: 20px 20px; }
+    .sheet { position: relative; width: min(760px, 100%); aspect-ratio: 760 / 450; min-height: 290px; background: var(--white); border: 1px solid #d8dcd2; border-radius: 4px; box-shadow: 0 2px 5px #304d3810; display: grid; place-items: center; }
+    .sheet-label { position: absolute; top: 14px; left: 16px; color: #68766d; font: 11px system-ui,sans-serif; letter-spacing: .07em; }
+    .empty { text-align: center; color: var(--muted); padding: 18px; }
+    .empty b { display: block; font-size: 19px; color: var(--ink); margin: 12px 0 4px; }
+    .empty .icon { width: 31px; height: 31px; color: var(--active); }
+    .drawing { width: min(500px, 93%); height: auto; overflow: visible; }
+    .drawing [data-editor] { display: none; }
+    [data-state='editing'] .drawing [data-editor] { display: inline; }
+    [data-state='editing'] .drawing [data-selection] { display: none; }
+    .notice { display: none; position: absolute; z-index: 1; top: 14px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 28px); padding: 9px 14px; border-radius: 6px; border: 1px solid #e8c2a0; background: #fff4e8; color: #733f21; }
+    [data-state='error'] .notice { display: block; }
+    .statusbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 24px; background: var(--white); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 700px) { .header, .review, .toolstrip, .statusbar { padding-inline: 12px; } .review small { display: none; } .space { padding-inline: 12px; min-height: 402px; } }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" class="sr" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="logo" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 15l4-6 4 6M9.5 13h5"/></symbol>
+    <symbol id="pointer" viewBox="0 0 24 24"><path d="m6 4 1 15 4-4 6 1z"/></symbol>
+    <symbol id="rect" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></symbol>
+    <symbol id="text" viewBox="0 0 24 24"><path d="M6 7h12m-6 0v12m-3 0h6"/></symbol>
+    <symbol id="undo" viewBox="0 0 24 24"><path d="m8 7-4 4 4 4m-4-4h10a5 5 0 0 1 5 5v2"/></symbol>
+    <symbol id="redo" viewBox="0 0 24 24"><path d="m16 7 4 4-4 4m4-4H10a5 5 0 0 0-5 5v2"/></symbol>
+    <symbol id="save" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4M5 16v4h14v-4"/></symbol>
+  </svg>
+  <header class="review" aria-label="预览审核区">
+    <div><strong>B3a / 设计预览 v1</strong><small>只有这里能切换状态 · 下方是静态样稿</small></div>
+    <nav class="states" aria-label="演示状态">
+      <button type="button" data-preview="empty" aria-pressed="false">空白</button>
+      <button type="button" data-preview="selected" aria-pressed="true">选中图形</button>
+      <button type="button" data-preview="editing" aria-pressed="false">编辑文字</button>
+      <button type="button" data-preview="error" aria-pressed="false">打开失败</button>
+    </nav>
+  </header>
+  <main class="editor" data-state="selected" aria-label="拟议的编辑器布局">
+    <header class="header">
+      <div class="brand"><span class="logo"><svg class="icon"><use href="#logo"/></svg></span>文档矢量画布</div>
+      <div class="file dirty"><b id="filename">帧数与预算</b><span class="dot" aria-hidden="true"></span><span id="saving">未保存</span></div>
+      <div class="actions"><span class="fake">新建</span><span class="fake">打开项目</span><span class="fake primary"><svg class="icon"><use href="#save"/></svg>保存项目</span></div>
+    </header>
+    <div class="toolstrip">
+      <div class="tool-group" aria-label="工具入口示意">
+        <span class="fake tool active" id="select-tool"><svg class="icon"><use href="#pointer"/></svg>选择</span>
+        <span class="fake tool"><svg class="icon"><use href="#rect"/></svg>矩形</span>
+        <span class="fake tool" id="text-tool"><svg class="icon"><use href="#text"/></svg>文字</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span class="fake tool" id="undo-tool"><svg class="icon"><use href="#undo"/></svg>撤销</span>
+        <span class="fake tool inactive"><svg class="icon"><use href="#redo"/></svg>重做</span>
+      </div>
+      <span id="hint">拖动矩形移动 · 拖动控制点缩放</span>
+    </div>
+    <div class="space">
+      <div class="notice" role="status"><b>无法打开项目。</b> 文件格式无效，当前画布未更改。</div>
+      <section class="sheet" aria-label="画布状态示意">
+        <span class="sheet-label" aria-hidden="true">PERSONAL / 01</span>
+        <div class="empty" hidden><svg class="icon"><use href="#rect"/></svg><b>从一张空白画布开始</b><span>选择「矩形」拖出图形，或用「文字」加一行说明。</span></div>
+        <svg class="drawing" viewBox="0 0 500 224" role="img" aria-label="矩形与中文说明的示例布局">
+          <rect x="96" y="35" width="308" height="106" rx="2" fill="#dcebe2" stroke="#48755f" stroke-width="2"/>
+          <text x="250" y="97" text-anchor="middle" fill="#214d40" font-size="21" font-family="system-ui, Microsoft YaHei, sans-serif">帧数增加，预算不变</text>
+          <g data-selection fill="#fffdfa" stroke="#27755f" stroke-width="1.5">
+            <rect x="91" y="30" width="318" height="116" fill="none"/>
+            <rect x="87" y="26" width="8" height="8"/><rect x="405" y="26" width="8" height="8"/>
+            <rect x="87" y="142" width="8" height="8"/><rect x="405" y="142" width="8" height="8"/>
+          </g>
+          <text x="250" y="190" text-anchor="middle" fill="#424e48" font-size="16" font-family="system-ui, Microsoft YaHei, sans-serif">这是一行可继续编辑的中文说明</text>
+          <g data-editor fill="none" stroke="#27755f" stroke-width="1.5"><rect x="116" y="166" width="268" height="35" rx="2"/><path d="M371 173v20"/></g>
+        </svg>
+      </section>
+    </div>
+    <footer class="statusbar"><span id="selection-status">已选中 1 个矩形</span><span>Personal Mode · 本地项目</span></footer>
+  </main>
+  <script>
+    const views = {
+      empty: ['未命名项目', '尚无改动', '先选一个绘图工具', '0 个对象'],
+      selected: ['帧数与预算', '未保存', '拖动矩形移动 · 拖动控制点缩放', '已选中 1 个矩形'],
+      editing: ['帧数与预算', '未保存', '在画布上输入文字 · 点击空白结束编辑', '正在编辑文字'],
+      error: ['帧数与预算', '未保存', '可以继续编辑当前项目', '当前项目保持不变'],
+    }
+    const main = document.querySelector('.editor')
+    const buttons = document.querySelectorAll('[data-preview]')
+    for (const button of buttons) button.addEventListener('click', () => {
+      const key = button.dataset.preview
+      const [name, saving, hint, selection] = views[key]
+      main.dataset.state = key
+      for (const each of buttons) each.setAttribute('aria-pressed', String(each === button))
+      document.querySelector('#filename').textContent = name
+      document.querySelector('#saving').textContent = saving
+      document.querySelector('#hint').textContent = hint
+      document.querySelector('#selection-status').textContent = selection
+      document.querySelector('.empty').hidden = key !== 'empty'
+      document.querySelector('.drawing').toggleAttribute('hidden', key === 'empty')
+      document.querySelector('.file').classList.toggle('dirty', key !== 'empty')
+      document.querySelector('#undo-tool').classList.toggle('inactive', key === 'empty')
+      document.querySelector('#text-tool').classList.toggle('active', key === 'editing')
+      document.querySelector('#select-tool').classList.toggle('active', key !== 'editing')
+    })
+  </script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 # Personal Mode · B 批验收记录
 
-状态：**B1、B2 核心检查点通过；未进行正式页面验收。** 关联：[B 批实施计划](2026-11-20-personal-mode-b.md) · [验收清单](validation.md)。
+状态：**B1、B2 核心检查点通过；B3a 预览 v1 待审核，B3b 未开始。** 关联：[B 批实施计划](2026-11-20-personal-mode-b.md) · [验收清单](validation.md) · [预览审核记录](../../design/personal-mode/b3-preview/review.md)。
 
 ## 核心检查点 · 2026-11-20
 
@@ -15,5 +15,9 @@
 
 - `npm.cmd run test:unit`：4 个文件，43 项通过。
 - `npm.cmd run typecheck`：退出码 0。
+
+## 页面预览 · 2026-11-20
+
+已制作 [B3a 静态预览 v1](../../design/personal-mode/b3-preview/index.html)，用示例展示空白、选中矩形、编辑文字和打开失败。Chrome 的两个约定桌面视口均可切换四种状态；不把预览按钮当作可用功能，也不把浏览器检查当作视觉批准。
 
 尚不声称完成 B 批：正式首页、真实浏览器保存重开、Windows 输入法候选取消与单步撤销均留待视觉批准后的 B3b。
