@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>文档矢量画布 · B3a 侧栏设计预览 v4.2</title>
+  <style>
+    * { box-sizing: border-box; }
+    /* 水彩纸：晕染留在工作区，项目操作栏用统一纸色。 */
+    :root {
+      color-scheme: light;
+      font: 14px/1.5 system-ui, 'Microsoft YaHei', sans-serif;
+      --surface: #fcfaf7;
+      --ink: #2b303a;
+      --muted: #525865;
+      --line: #ded8d2;
+      --control-line: #bbb7b4;
+      --review: #f1eae3;
+      --review-track: #e8e0d9;
+      --review-tag: #f9f4ec;
+      --review-hover: #f3eee8;
+      --review-choice: #fffdfa;
+      --accent: #355985;
+      --active-bg: #e7edf5;
+      --active-line: #aabacf;
+      --file-line: #828c9b;
+      --actions-fill: #f3eee8;
+      --actions-line: #d6ccc1;
+      --actions-ink: #343e4e;
+      --history-bg: #f2efeb;
+      --workspace: #f2ede8;
+      --workspace-art: radial-gradient(ellipse 53% 92% at 0% 12%, #edc2aeab, transparent 74%),
+                       radial-gradient(ellipse 54% 86% at 100% 89%, #add3d8bb, transparent 76%);
+      --sheet: #fffdf9;
+      --sheet-line: #c9c5bf;
+      --sheet-shadow: 0 2px 4px #4533230d, 0 14px 34px #45332313;
+      --sample: #e0eaf3;
+      --sample-line: #6381a2;
+      --sample-ink: #2e5075;
+      --selection: #355985;
+      --handle: #fffdf9;
+      --error-bg: #fff1ea;
+      --error-ink: #7d342a;
+      --error-line: #b46755;
+    }
+    /* 暗室画廊：用炭灰明度分层，不在暗底上叠色光或装饰阴影。 */
+    :root[data-theme='dark'] {
+      color-scheme: dark;
+      --surface: #202021;
+      --ink: #eeebe7;
+      --muted: #b7b1ab;
+      --line: #3c3938;
+      --control-line: #635c56;
+      --review: #171718;
+      --review-track: #242223;
+      --review-tag: #302720;
+      --review-hover: #353032;
+      --review-choice: #3a3029;
+      --accent: #ddb187;
+      --active-bg: #382d26;
+      --active-line: #7d614c;
+      --file-line: #81766b;
+      --actions-fill: #2a2828;
+      --actions-line: #514b48;
+      --actions-ink: #e3ddd6;
+      --history-bg: #252324;
+      --workspace: #141415;
+      --workspace-art: none;
+      --sheet: #262627;
+      --sheet-line: #4e4a47;
+      --sheet-shadow: none;
+      --sample: #343b46;
+      --sample-line: #8495a9;
+      --sample-ink: #e4ecf6;
+      --selection: #e5b78b;
+      --handle: #262627;
+      --error-bg: #362321;
+      --error-ink: #ffd3c7;
+      --error-line: #b57162;
+    }
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      margin: 0;
+      color: var(--ink);
+      background: var(--surface);
+    }
+    button { font: inherit; }
+    .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+    .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .review, .statusbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-inline: 24px;
+    }
+    .review { padding-block: 8px; background: var(--review); border-bottom: 1px solid var(--line); }
+    .review-meta, .review-controls, .switcher { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .review-meta { gap: 10px; }
+    .review-controls { gap: 8px 16px; }
+    .review-meta strong {
+      padding: 4px 8px;
+      border: 1px solid var(--active-line);
+      border-radius: 5px;
+      background: var(--review-tag);
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: .035em;
+    }
+    .review small, .switcher-label { color: var(--muted); font-size: 12px; }
+    .themes, .state-rail { display: flex; align-items: center; flex-wrap: wrap; }
+    .themes {
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--control-line);
+      border-radius: 999px;
+      background: var(--review-track);
+    }
+    .review-controls button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .themes button { padding: 4px 10px; border: 1px solid transparent; border-radius: 999px; }
+    .themes .icon { width: 15px; height: 15px; }
+    .themes button:hover { background: var(--review-hover); color: var(--ink); }
+    .themes button[aria-pressed='true'] { background: var(--review-choice); border-color: var(--file-line); color: var(--accent); }
+    .state-rail button {
+      position: relative;
+      min-height: 38px;
+      padding: 4px 9px;
+      border: 0;
+      border-bottom: 1px solid var(--control-line);
+    }
+    .state-rail button::after {
+      content: '';
+      position: absolute;
+      inset-inline: 9px;
+      bottom: -1px;
+      border-bottom: 2px solid transparent;
+    }
+    .state-rail button:hover { color: var(--ink); }
+    .state-rail button[aria-pressed='true'] { color: var(--accent); }
+    .state-rail button:is(:hover, [aria-pressed='true'])::after { border-color: currentColor; }
+    button:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px; }
+
+    .editor {
+      --sidebar-size: 240px;
+      display: grid;
+      grid-template-columns: var(--sidebar-size) minmax(0, 1fr);
+      min-width: 0;
+    }
+    .editor[data-sidebar='collapsed'] { --sidebar-size: 48px; }
+    .sidebar { min-width: 0; border-inline-end: 1px solid var(--line); background: var(--surface); }
+    .sidebar-head { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+    .sidebar-toggle {
+      display: grid;
+      place-items: center;
+      flex: none;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid var(--file-line);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--accent);
+      cursor: pointer;
+    }
+    .sidebar-toggle:hover { background: var(--active-bg); }
+    .sidebar-toggle .icon { width: 19px; height: 19px; }
+    .sidebar-toggle[aria-expanded='false'] .toggle-arrow { transform: scaleX(-1); transform-origin: center; transform-box: fill-box; }
+    .brand { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .logo { background: var(--active-bg); color: var(--accent); border: 1px solid var(--active-line); width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; }
+    .editor[data-sidebar='collapsed'] .brand { display: none; }
+    .rail-label { display: none; margin: 10px 0; color: var(--muted); text-align: center; font-size: 11px; }
+    .editor[data-sidebar='collapsed'] .rail-label { display: block; }
+    .sidebar section { padding: 16px; }
+    .file-panel { border-bottom: 1px solid var(--line); }
+    .section-title { margin: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .file-name { display: block; margin-bottom: 12px; color: var(--ink); font-size: 18px; font-weight: 700; }
+    .actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, .72fr) minmax(0, 1fr);
+      border: 1px solid var(--actions-line);
+      border-radius: 8px;
+      background: var(--actions-fill);
+      color: var(--actions-ink);
+    }
+    .fake { display: inline-flex; gap: 6px; align-items: center; color: var(--ink); white-space: nowrap; }
+    .file-action { justify-content: center; min-height: 34px; padding: 4px 2px; color: inherit; font-size: 12px; }
+    .file-action + .file-action { border-inline-start: 1px solid var(--actions-line); }
+    .file-save { font-weight: 600; }
+    .object-head, .canvas-entry { display: flex; align-items: center; gap: 7px; }
+    .object-head { justify-content: space-between; margin-bottom: 12px; }
+    #object-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .canvas-entry { font-weight: 600; }
+    .canvas-entry .icon { color: var(--accent); }
+    .object-list { display: grid; gap: 4px; margin: 6px 0 0; padding-left: 8px; list-style: none; }
+    .object-row {
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+      min-height: 34px;
+      padding: 4px 6px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .object-row .icon { width: 16px; height: 16px; }
+    .row-state { display: none; font-size: 11px; white-space: nowrap; }
+    .editor:is([data-state='selected'], [data-state='error']) .object-rectangle,
+    .editor[data-state='editing'] .object-text { border-color: var(--active-line); background: var(--active-bg); color: var(--accent); font-weight: 600; }
+    .editor:is([data-state='selected'], [data-state='error']) .object-rectangle .row-state,
+    .editor[data-state='editing'] .object-text .row-state { display: block; }
+    .object-empty { margin: 6px 0 0 8px; padding: 8px; border-block: 1px dashed var(--line); color: var(--muted); font-size: 13px; }
+
+    .workspace { display: grid; grid-template-rows: 1fr auto; min-width: 0; container-type: inline-size; }
+    /* 让工具组始终位于中间栏；错误提示只能使用右侧空间。 */
+    .stage-head { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px 12px; }
+    .toolstrip { grid-column: 2; justify-self: center; max-width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .tool-group { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+    .tool { min-height: 34px; padding-inline: 3px 7px; }
+    .tool-icon {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 27px;
+      height: 27px;
+      border: 1px solid transparent;
+      border-radius: 50%;
+    }
+    .tool.active { color: var(--accent); font-weight: 600; }
+    .tool.active .tool-icon { border-color: currentColor; background: var(--active-bg); }
+    .tool.active .tool-icon::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      right: -1px;
+      width: 7px;
+      height: 7px;
+      border: 1px solid var(--surface);
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .history { display: inline-flex; align-items: center; padding: 2px 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--history-bg); }
+    .history-action { min-height: 26px; padding-inline: 7px; font-size: 13px; }
+    .history-action .icon { width: 16px; height: 16px; }
+    .history-action + .history-action { border-left: 1px solid var(--line); }
+    .history-action.inactive, #hint { color: var(--muted); }
+    #hint { font-size: 13px; }
+    .sep { height: 23px; width: 1px; background: var(--line); margin-inline: 4px; }
+
+    .space {
+      display: grid;
+      grid-template-rows: auto minmax(245px, 1fr);
+      gap: 14px;
+      min-width: 0;
+      padding: 16px 24px 20px;
+      background-color: var(--workspace);
+      background-image: var(--workspace-art);
+    }
+    .sheet-zone { display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; min-width: 0; min-height: 0; container-type: size; }
+    .sheet {
+      position: relative;
+      /* 按右栏宽度和工具下方的可用高度一起计算，不覆盖工具或状态栏。 */
+      width: min(92%, 1180px, calc(100cqh * 760 / 450));
+      aspect-ratio: 760 / 450;
+      min-height: 172px;
+      background: var(--sheet);
+      border: 1px solid var(--sheet-line);
+      border-radius: 4px;
+      box-shadow: var(--sheet-shadow);
+      display: grid;
+      place-items: center;
+    }
+    .sheet-label { position: absolute; top: 15px; left: 17px; color: var(--accent); font-size: 11px; letter-spacing: .11em; }
+    .empty { text-align: center; color: var(--muted); padding: 18px; }
+    .empty b { display: block; font-size: 19px; color: var(--ink); margin: 12px 0 4px; }
+    .empty-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-inline: auto; border: 1px solid var(--active-line); border-radius: 8px; background: var(--active-bg); color: var(--accent); }
+    .empty-icon .icon { width: 27px; height: 27px; }
+    .drawing { width: min(610px, 70%); height: auto; overflow: visible; }
+    .sample-shape { fill: var(--sample); stroke: var(--sample-line); }
+    .sample-title { fill: var(--sample-ink); }
+    .sample-caption { fill: var(--muted); }
+    .drawing [data-selection], .drawing [data-editor] { stroke: var(--selection); stroke-width: 2; }
+    .drawing [data-selection] { fill: var(--handle); }
+    .drawing [data-editor] { display: none; }
+    [data-state='editing'] .drawing [data-editor] { display: inline; }
+    [data-state='editing'] .drawing [data-selection] { display: none; }
+    .notice {
+      grid-column: 3;
+      justify-self: end;
+      visibility: hidden;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 100%;
+      min-height: 40px;
+      padding: 8px 12px;
+      border: 1px solid var(--error-line);
+      border-radius: 6px;
+      background: var(--error-bg);
+      color: var(--error-ink);
+      font-size: 13px;
+    }
+    [data-state='error'] .notice { visibility: visible; }
+    @container (max-width: 930px) {
+      .stage-head { grid-template-columns: minmax(0, 1fr); }
+      .toolstrip, .notice { grid-column: 1; justify-self: center; }
+    }
+    .statusbar { padding-block: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .status-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+    .status-meta #selection-status { color: var(--ink); }
+    .status-meta .sep { height: 12px; margin: 0; }
+    [hidden] { display: none !important; }
+    @media (max-width: 800px) {
+      .editor { --sidebar-size: 184px; }
+      .review, .space, .statusbar, .sidebar section { padding-inline: 12px; }
+      .brand .logo { display: none; }
+      .sheet { width: min(96%, calc(100cqh * 760 / 450)); }
+      .drawing { width: min(610px, 94%); }
+    }
+    @media (max-width: 440px) {
+      .sheet { min-height: 245px; }
+      .empty { padding: 34px 8px 8px; }
+      .sheet-label { top: 8px; left: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" class="sr" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="logo" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 15l4-6 4 6M9.5 13h5"/></symbol>
+    <symbol id="pointer" viewBox="0 0 24 24"><path d="m6 4 1 15 4-4 6 1z"/></symbol>
+    <symbol id="rect" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1"/></symbol>
+    <symbol id="page" viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5zM15 3v5h4M8 12h8m-8 4h8"/></symbol>
+    <symbol id="text" viewBox="0 0 24 24"><path d="M6 7h12m-6 0v12m-3 0h6"/></symbol>
+    <symbol id="undo" viewBox="0 0 24 24"><path d="m8 7-4 4 4 4m-4-4h10a5 5 0 0 1 5 5v2"/></symbol>
+    <symbol id="redo" viewBox="0 0 24 24"><path d="m16 7 4 4-4 4m4-4H10a5 5 0 0 0-5 5v2"/></symbol>
+    <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19m0-14-1.5 1.5m-11 11L5 19"/></symbol>
+    <symbol id="moon" viewBox="0 0 24 24"><path d="M20.5 15.1A9 9 0 0 1 8.9 3.5 9 9 0 1 0 20.5 15.1z"/></symbol>
+    <symbol id="error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5m0 3.5h.01"/></symbol>
+  </svg>
+  <header class="review" aria-label="预览审核区">
+    <div class="review-meta"><strong>B3a / 设计预览 v4.2</strong><small>侧栏布局 · 业务入口仅示意</small></div>
+    <div class="review-controls">
+      <div class="switcher">
+        <span class="switcher-label" id="theme-label">主题</span>
+        <div class="themes" role="group" aria-labelledby="theme-label">
+          <button type="button" data-theme-choice="light" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#sun"/></svg>亮色</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#moon"/></svg>暗色</button>
+        </div>
+      </div>
+      <div class="switcher">
+        <span class="switcher-label" id="demo-label">演示状态</span>
+        <div class="state-rail" role="group" aria-labelledby="demo-label">
+          <button type="button" data-preview="empty" aria-pressed="false">空白画布</button>
+          <button type="button" data-preview="selected" aria-pressed="true">选中图形</button>
+          <button type="button" data-preview="editing" aria-pressed="false">编辑文字</button>
+          <button type="button" data-preview="error" aria-pressed="false">打开失败</button>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main class="editor" data-state="selected" data-sidebar="expanded" aria-label="拟议的编辑器布局">
+    <aside class="sidebar" aria-label="项目侧栏">
+      <div class="sidebar-head">
+        <button class="sidebar-toggle" type="button" aria-controls="sidebar-content" aria-expanded="true" aria-label="收起侧栏" title="收起侧栏">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M9 4.5v15"/><path class="toggle-arrow" d="m16.5 9-3 3 3 3"/></svg>
+        </button>
+        <div class="brand"><span class="logo"><svg class="icon" aria-hidden="true"><use href="#logo"/></svg></span>文档矢量画布</div>
+      </div>
+      <p class="rail-label" aria-hidden="true">项目</p>
+      <div id="sidebar-content">
+        <section class="file-panel" aria-label="项目操作">
+          <b class="file-name" id="filename">帧数与预算</b>
+          <div class="actions" role="group" aria-label="文件操作示意">
+            <span class="fake file-action file-save">保存项目</span>
+            <span class="fake file-action">新建</span>
+            <span class="fake file-action">打开项目</span>
+          </div>
+        </section>
+        <section aria-labelledby="content-heading">
+          <div class="object-head"><h2 class="section-title" id="content-heading">项目内容</h2><span id="object-count">2 个对象</span></div>
+          <div class="canvas-entry"><svg class="icon" aria-hidden="true"><use href="#page"/></svg>当前画布</div>
+          <ul class="object-list" aria-label="画布对象示意">
+            <li class="object-row object-rectangle"><svg class="icon" aria-hidden="true"><use href="#rect"/></svg><span>矩形</span><span class="row-state">已选中</span></li>
+            <li class="object-row object-text"><svg class="icon" aria-hidden="true"><use href="#text"/></svg><span>文字</span><span class="row-state">编辑中</span></li>
+          </ul>
+          <p class="object-empty" hidden>暂无对象</p>
+        </section>
+      </div>
+    </aside>
+    <section class="workspace" aria-label="画布工作区">
+      <div class="space">
+        <div class="stage-head">
+          <div class="toolstrip">
+            <div class="tool-group" role="group" aria-label="工具入口示意">
+              <span class="fake tool active" id="select-tool"><span class="tool-icon"><svg class="icon" aria-hidden="true"><use href="#pointer"/></svg></span>选择</span>
+              <span class="fake tool"><span class="tool-icon"><svg class="icon" aria-hidden="true"><use href="#rect"/></svg></span>矩形</span>
+              <span class="fake tool" id="text-tool"><span class="tool-icon"><svg class="icon" aria-hidden="true"><use href="#text"/></svg></span>文字</span>
+              <span class="sep" aria-hidden="true"></span>
+              <span class="history">
+                <span class="fake history-action" id="undo-tool"><svg class="icon" aria-hidden="true"><use href="#undo"/></svg>撤销</span>
+                <span class="fake history-action inactive"><svg class="icon" aria-hidden="true"><use href="#redo"/></svg>重做</span>
+              </span>
+            </div>
+          </div>
+          <div class="notice" role="status">
+            <svg class="icon" aria-hidden="true"><use href="#error"/></svg><span><b>无法打开项目。</b> 文件格式无效，当前画布未更改。</span>
+          </div>
+        </div>
+        <div class="sheet-zone">
+          <section class="sheet" aria-label="画布状态示意">
+            <span class="sheet-label" aria-hidden="true">PERSONAL / 01</span>
+            <div class="empty" hidden><span class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#rect"/></svg></span><b>从一张空白画布开始</b><span>选择「矩形」拖出图形，或用「文字」加一行说明。</span></div>
+            <svg class="drawing" viewBox="0 0 500 224" role="img" aria-label="矩形与中文说明的示例布局">
+              <rect class="sample-shape" x="96" y="35" width="308" height="106" rx="2" stroke-width="2"/>
+              <text class="sample-title" x="250" y="97" text-anchor="middle" font-size="21">帧数增加，预算不变</text>
+              <g data-selection>
+                <rect x="91" y="30" width="318" height="116" fill="none"/>
+                <rect x="86" y="25" width="10" height="10"/><rect x="404" y="25" width="10" height="10"/>
+                <rect x="86" y="141" width="10" height="10"/><rect x="404" y="141" width="10" height="10"/>
+              </g>
+              <text class="sample-caption" x="250" y="190" text-anchor="middle" font-size="16">这是一行可继续编辑的中文说明</text>
+              <g data-editor fill="none"><rect x="116" y="166" width="268" height="35" rx="2"/><path d="M371 173v20"/></g>
+            </svg>
+          </section>
+        </div>
+      </div>
+      <footer class="statusbar">
+        <div class="status-meta"><span id="selection-status" role="status">已选中 1 个矩形</span><span class="sep" aria-hidden="true"></span><span id="hint">拖动矩形移动 · 拖动控制点缩放</span></div>
+        <span>Personal Mode · 本地项目</span>
+      </footer>
+    </section>
+  </main>
+  <script>
+    const themes = document.querySelectorAll('[data-theme-choice]')
+    for (const button of themes) button.addEventListener('click', () => {
+      document.documentElement.dataset.theme = button.dataset.themeChoice
+      for (const each of themes) each.setAttribute('aria-pressed', String(each === button))
+    })
+
+    const views = {
+      empty: ['未命名项目', '先选一个绘图工具', '0 个对象'],
+      selected: ['帧数与预算', '拖动矩形移动 · 拖动控制点缩放', '已选中 1 个矩形'],
+      editing: ['帧数与预算', '在画布上输入文字 · 点击空白结束编辑', '正在编辑文字'],
+      error: ['帧数与预算', '可以继续编辑当前项目', '当前项目保持不变'],
+    }
+    const main = document.querySelector('.editor')
+    const sidebarToggle = document.querySelector('.sidebar-toggle')
+    const sidebarContent = document.querySelector('#sidebar-content')
+    sidebarToggle.addEventListener('click', () => {
+      const expanded = main.dataset.sidebar === 'collapsed'
+      const label = expanded ? '收起侧栏' : '展开侧栏'
+      main.dataset.sidebar = expanded ? 'expanded' : 'collapsed'
+      sidebarContent.hidden = !expanded
+      sidebarToggle.setAttribute('aria-expanded', String(expanded))
+      sidebarToggle.setAttribute('aria-label', label)
+      sidebarToggle.title = label
+    })
+
+    const buttons = document.querySelectorAll('[data-preview]')
+    for (const button of buttons) button.addEventListener('click', () => {
+      const key = button.dataset.preview
+      const [name, hint, selection] = views[key]
+      main.dataset.state = key
+      for (const each of buttons) each.setAttribute('aria-pressed', String(each === button))
+      document.querySelector('#filename').textContent = name
+      document.querySelector('#hint').textContent = hint
+      document.querySelector('#selection-status').textContent = selection
+      document.querySelector('#object-count').textContent = key === 'empty' ? '0 个对象' : '2 个对象'
+      document.querySelector('.object-empty').hidden = key !== 'empty'
+      document.querySelector('.object-list').hidden = key === 'empty'
+      document.querySelector('.empty').hidden = key !== 'empty'
+      document.querySelector('.drawing').toggleAttribute('hidden', key === 'empty')
+      document.querySelector('#undo-tool').classList.toggle('inactive', key === 'empty')
+      document.querySelector('#text-tool').classList.toggle('active', key === 'editing')
+      document.querySelector('#select-tool').classList.toggle('active', key !== 'editing')
+    })
+  </script>
+</body>
+</html>

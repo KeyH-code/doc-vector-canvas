@@ -1,55 +1,281 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>文档矢量画布 · B3a 页面预览</title>
+  <title>文档矢量画布 · B3a 设计预览 v3</title>
   <style>
     * { box-sizing: border-box; }
-    :root { color-scheme: light; --paper: #faf9f6; --ink: #242827; --muted: #626d67; --line: #dedfd8; --green: #214d40; --active: #3e7764; --white: #fffdfa; font: 14px/1.5 system-ui, 'Microsoft YaHei', sans-serif; }
-    body { margin: 0; color: var(--ink); background: var(--paper); }
+    /* 水彩纸：晕染留在工作区，只有保存入口借用一笔水彩。 */
+    :root {
+      color-scheme: light;
+      font: 14px/1.5 system-ui, 'Microsoft YaHei', sans-serif;
+      --surface: #fcfaf7;
+      --ink: #2b303a;
+      --muted: #525865;
+      --line: #ded8d2;
+      --control-line: #bbb7b4;
+      --review: #f1eae3;
+      --review-track: #e8e0d9;
+      --review-tag: #f9f4ec;
+      --review-hover: #f3eee8;
+      --review-choice: #fffdfa;
+      --accent: #355985;
+      --active-bg: #e7edf5;
+      --active-line: #aabacf;
+      --file-line: #828c9b;
+      --save-fill: #3a5e88;
+      --save-wash: linear-gradient(110deg, #365987, #466d78);
+      --save-line: #365987;
+      --save-ink: #fffdfa;
+      --history-bg: #f2efeb;
+      --dirty: #86552e;
+      --clean: #5e7167;
+      --workspace: #f2ede8;
+      --workspace-art: radial-gradient(ellipse 53% 92% at 0% 12%, #edc2aeab, transparent 74%),
+                       radial-gradient(ellipse 54% 86% at 100% 89%, #add3d8bb, transparent 76%);
+      --sheet: #fffdf9;
+      --sheet-line: #c9c5bf;
+      --sheet-shadow: 0 2px 4px #4533230d, 0 14px 34px #45332313;
+      --sample: #e0eaf3;
+      --sample-line: #6381a2;
+      --sample-ink: #2e5075;
+      --selection: #355985;
+      --handle: #fffdf9;
+      --error-bg: #fff1ea;
+      --error-ink: #7d342a;
+      --error-line: #b46755;
+    }
+    /* 暗室画廊：用炭灰明度分层，不在暗底上叠色光或装饰阴影。 */
+    :root[data-theme='dark'] {
+      color-scheme: dark;
+      --surface: #202021;
+      --ink: #eeebe7;
+      --muted: #b7b1ab;
+      --line: #3c3938;
+      --control-line: #635c56;
+      --review: #171718;
+      --review-track: #242223;
+      --review-tag: #302720;
+      --review-hover: #353032;
+      --review-choice: #3a3029;
+      --accent: #ddb187;
+      --active-bg: #382d26;
+      --active-line: #7d614c;
+      --file-line: #81766b;
+      --save-fill: #28221e;
+      --save-wash: none;
+      --save-line: var(--accent);
+      --save-ink: var(--accent);
+      --history-bg: #252324;
+      --dirty: #d4ab81;
+      --clean: #a5b8aa;
+      --workspace: #141415;
+      --workspace-art: none;
+      --sheet: #262627;
+      --sheet-line: #4e4a47;
+      --sheet-shadow: none;
+      --sample: #343b46;
+      --sample-line: #8495a9;
+      --sample-ink: #e4ecf6;
+      --selection: #e5b78b;
+      --handle: #262627;
+      --error-bg: #362321;
+      --error-ink: #ffd3c7;
+      --error-line: #b57162;
+    }
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      margin: 0;
+      color: var(--ink);
+      background: var(--surface);
+    }
     button { font: inherit; }
     .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
     .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-    .review { padding: 9px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; background: #263330; color: #f8f7f2; }
-    .review strong { font-size: 12px; letter-spacing: .09em; }
-    .review small { margin-left: 10px; color: #ced9d2; }
-    .states { display: flex; flex-wrap: wrap; gap: 4px; }
-    .states button { background: transparent; border: 1px solid transparent; border-radius: 5px; color: #dee9e2; padding: 4px 10px; cursor: pointer; }
-    .states button[aria-pressed='true'] { background: #476258; border-color: #749284; color: white; }
-    button:focus-visible { outline: 2px solid #45937c; outline-offset: 2px; }
-    .editor { min-height: calc(100vh - 48px); display: grid; grid-template-rows: auto auto 1fr auto; }
-    .header { min-height: 65px; padding: 11px 24px; background: var(--white); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap; }
-    .brand, .file, .actions, .tool-group { display: flex; align-items: center; gap: 9px; }
-    .brand { font-weight: 700; white-space: nowrap; }
-    .logo { background: var(--green); color: #fffdfa; width: 33px; height: 33px; border-radius: 8px; display: grid; place-items: center; }
-    .file { gap: 8px; color: var(--muted); }
+    .review, .header, .toolstrip, .statusbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-inline: 24px;
+    }
+    .review { padding-block: 8px; background: var(--review); border-bottom: 1px solid var(--line); }
+    .review-meta, .review-controls, .switcher { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .review-meta { gap: 10px; }
+    .review-controls { gap: 8px 16px; }
+    .review-meta strong {
+      padding: 4px 8px;
+      border: 1px solid var(--active-line);
+      border-radius: 5px;
+      background: var(--review-tag);
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: .035em;
+    }
+    .review small, .switcher-label { color: var(--muted); font-size: 12px; }
+    .themes, .state-rail { display: flex; align-items: center; flex-wrap: wrap; }
+    .themes {
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--control-line);
+      border-radius: 999px;
+      background: var(--review-track);
+    }
+    .review-controls button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .themes button { padding: 4px 10px; border: 1px solid transparent; border-radius: 999px; }
+    .themes .icon { width: 15px; height: 15px; }
+    .themes button:hover { background: var(--review-hover); color: var(--ink); }
+    .themes button[aria-pressed='true'] { background: var(--review-choice); border-color: var(--file-line); color: var(--accent); }
+    .state-rail button {
+      position: relative;
+      min-height: 38px;
+      padding: 4px 9px;
+      border: 0;
+      border-bottom: 1px solid var(--control-line);
+    }
+    .state-rail button::after {
+      content: '';
+      position: absolute;
+      inset-inline: 9px;
+      bottom: -1px;
+      border-bottom: 2px solid transparent;
+    }
+    .state-rail button:hover { color: var(--ink); }
+    .state-rail button[aria-pressed='true'] { color: var(--accent); }
+    .state-rail button:is(:hover, [aria-pressed='true'])::after { border-color: currentColor; }
+    button:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px; }
+
+    .editor { min-width: 0; display: grid; grid-template-rows: auto auto 1fr auto; }
+    .header { min-height: 66px; padding-block: 11px; border-bottom: 1px solid var(--line); }
+    .brand, .file, .actions, .tool-group { display: flex; align-items: center; gap: 8px; }
+    .brand { font-size: 16px; font-weight: 700; white-space: nowrap; }
+    .logo { background: var(--active-bg); color: var(--accent); border: 1px solid var(--active-line); width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center; }
+    .file { color: var(--muted); }
     .file b { color: var(--ink); font-weight: 600; }
-    .dot { width: 7px; height: 7px; border-radius: 100%; background: #6a8978; }
-    .dirty .dot { background: #a26326; }
-    .fake { display: inline-flex; gap: 6px; align-items: center; min-height: 34px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--white); color: var(--ink); white-space: nowrap; }
-    .fake.primary { background: var(--green); border-color: var(--green); color: white; }
-    .toolstrip { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; padding: 8px 24px; border-bottom: 1px solid var(--line); background: var(--white); }
-    .tool-group { gap: 5px; }
-    .tool { border-color: transparent; }
-    .tool.active { color: var(--green); background: #e7f0ea; border-color: #bed0c3; font-weight: 650; }
-    .tool.inactive { color: #767e79; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--clean); margin-left: 4px; }
+    .dirty .dot { background: var(--dirty); }
+    #saving { font-size: 12px; }
+    .dirty #saving { color: var(--dirty); }
+    .actions, .tool-group { flex-wrap: wrap; }
+    .fake { display: inline-flex; gap: 6px; align-items: center; color: var(--ink); white-space: nowrap; }
+    .file-action { min-height: 34px; padding: 5px 11px; border: 1px solid transparent; border-radius: 999px; }
+    .file-action .icon { width: 16px; height: 16px; }
+    .file-new { padding-inline: 6px; }
+    .file-open { border-color: var(--file-line); }
+    .file-save {
+      padding-inline: 12px;
+      border-color: var(--save-line);
+      background-color: var(--save-fill);
+      background-image: var(--save-wash);
+      color: var(--save-ink);
+      font-weight: 600;
+    }
+    .toolstrip { padding-block: 8px; border-bottom: 1px solid var(--line); }
+    .tool-group { gap: 4px; }
+    .tool { min-height: 34px; padding-inline: 3px 7px; }
+    .tool-icon {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 27px;
+      height: 27px;
+      border: 1px solid transparent;
+      border-radius: 50%;
+    }
+    .tool.active { color: var(--accent); font-weight: 600; }
+    .tool.active .tool-icon { border-color: currentColor; background: var(--active-bg); }
+    .tool.active .tool-icon::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      right: -1px;
+      width: 7px;
+      height: 7px;
+      border: 1px solid var(--surface);
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .history { display: inline-flex; align-items: center; padding: 2px 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--history-bg); }
+    .history-action { min-height: 26px; padding-inline: 7px; font-size: 13px; }
+    .history-action .icon { width: 16px; height: 16px; }
+    .history-action + .history-action { border-left: 1px solid var(--line); }
+    .history-action.inactive, #hint { color: var(--muted); }
+    #hint { font-size: 13px; }
     .sep { height: 23px; width: 1px; background: var(--line); margin-inline: 4px; }
-    .space { position: relative; min-height: 490px; display: grid; place-items: center; padding: 45px 24px; overflow: hidden; background: #eeefe9; background-image: radial-gradient(#bbc7bb 1px, transparent 1px); background-size: 20px 20px; }
-    .sheet { position: relative; width: min(760px, 100%); aspect-ratio: 760 / 450; min-height: 290px; background: var(--white); border: 1px solid #d8dcd2; border-radius: 4px; box-shadow: 0 2px 5px #304d3810; display: grid; place-items: center; }
-    .sheet-label { position: absolute; top: 14px; left: 16px; color: #68766d; font: 11px system-ui,sans-serif; letter-spacing: .07em; }
+
+    .space {
+      display: grid;
+      /* 上下留出等高留白；上方还为文件提示预留位置，不压住画布。 */
+      grid-template-rows: minmax(auto, 1fr) auto minmax(56px, 1fr);
+      place-items: center;
+      padding-inline: 24px;
+      background-color: var(--workspace);
+      background-image: var(--workspace-art);
+    }
+    .sheet {
+      grid-row: 2;
+      position: relative;
+      width: min(760px, 100%);
+      aspect-ratio: 760 / 450;
+      min-height: 245px;
+      background: var(--sheet);
+      border: 1px solid var(--sheet-line);
+      border-radius: 4px;
+      box-shadow: var(--sheet-shadow);
+      display: grid;
+      place-items: center;
+    }
+    .sheet-label { position: absolute; top: 15px; left: 17px; color: var(--accent); font-size: 11px; letter-spacing: .11em; }
     .empty { text-align: center; color: var(--muted); padding: 18px; }
     .empty b { display: block; font-size: 19px; color: var(--ink); margin: 12px 0 4px; }
-    .empty .icon { width: 31px; height: 31px; color: var(--active); }
+    .empty-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-inline: auto; border: 1px solid var(--active-line); border-radius: 8px; background: var(--active-bg); color: var(--accent); }
+    .empty-icon .icon { width: 27px; height: 27px; }
     .drawing { width: min(500px, 93%); height: auto; overflow: visible; }
+    .sample-shape { fill: var(--sample); stroke: var(--sample-line); }
+    .sample-title { fill: var(--sample-ink); }
+    .sample-caption { fill: var(--muted); }
+    .drawing [data-selection], .drawing [data-editor] { stroke: var(--selection); stroke-width: 2; }
+    .drawing [data-selection] { fill: var(--handle); }
     .drawing [data-editor] { display: none; }
     [data-state='editing'] .drawing [data-editor] { display: inline; }
     [data-state='editing'] .drawing [data-selection] { display: none; }
-    .notice { display: none; position: absolute; z-index: 1; top: 14px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 28px); padding: 9px 14px; border-radius: 6px; border: 1px solid #e8c2a0; background: #fff4e8; color: #733f21; }
-    [data-state='error'] .notice { display: block; }
-    .statusbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 24px; background: var(--white); border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .notice {
+      grid-row: 1;
+      visibility: hidden;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 100%;
+      min-height: 40px;
+      margin-block: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--error-line);
+      border-radius: 6px;
+      background: var(--error-bg);
+      color: var(--error-ink);
+      font-size: 13px;
+    }
+    [data-state='error'] .notice { visibility: visible; }
+    .statusbar { padding-block: 10px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     [hidden] { display: none !important; }
-    @media (max-width: 700px) { .header, .review, .toolstrip, .statusbar { padding-inline: 12px; } .review small { display: none; } .space { padding-inline: 12px; min-height: 402px; } }
+    @media (max-width: 700px) {
+      .header, .review, .toolstrip, .space, .statusbar { padding-inline: 12px; }
+    }
   </style>
 </head>
 <body>
@@ -60,55 +286,86 @@
     <symbol id="text" viewBox="0 0 24 24"><path d="M6 7h12m-6 0v12m-3 0h6"/></symbol>
     <symbol id="undo" viewBox="0 0 24 24"><path d="m8 7-4 4 4 4m-4-4h10a5 5 0 0 1 5 5v2"/></symbol>
     <symbol id="redo" viewBox="0 0 24 24"><path d="m16 7 4 4-4 4m4-4H10a5 5 0 0 0-5 5v2"/></symbol>
+    <symbol id="new" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="open" viewBox="0 0 24 24"><path d="M3 18V6a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v2M3 18l3-8h15l-3 8z"/></symbol>
     <symbol id="save" viewBox="0 0 24 24"><path d="M12 4v11m-4-4 4 4 4-4M5 16v4h14v-4"/></symbol>
+    <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19m0-14-1.5 1.5m-11 11L5 19"/></symbol>
+    <symbol id="moon" viewBox="0 0 24 24"><path d="M20.5 15.1A9 9 0 0 1 8.9 3.5 9 9 0 1 0 20.5 15.1z"/></symbol>
+    <symbol id="error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5m0 3.5h.01"/></symbol>
   </svg>
   <header class="review" aria-label="预览审核区">
-    <div><strong>B3a / 设计预览 v1</strong><small>只有这里能切换状态 · 下方是静态样稿</small></div>
-    <nav class="states" aria-label="演示状态">
-      <button type="button" data-preview="empty" aria-pressed="false">空白</button>
-      <button type="button" data-preview="selected" aria-pressed="true">选中图形</button>
-      <button type="button" data-preview="editing" aria-pressed="false">编辑文字</button>
-      <button type="button" data-preview="error" aria-pressed="false">打开失败</button>
-    </nav>
+    <div class="review-meta"><strong>B3a / 设计预览 v3</strong><small>下方编辑器为静态示意</small></div>
+    <div class="review-controls">
+      <div class="switcher">
+        <span class="switcher-label" id="theme-label">主题</span>
+        <div class="themes" role="group" aria-labelledby="theme-label">
+          <button type="button" data-theme-choice="light" aria-pressed="true"><svg class="icon" aria-hidden="true"><use href="#sun"/></svg>亮色</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#moon"/></svg>暗色</button>
+        </div>
+      </div>
+      <div class="switcher">
+        <span class="switcher-label" id="demo-label">演示状态</span>
+        <div class="state-rail" role="group" aria-labelledby="demo-label">
+          <button type="button" data-preview="empty" aria-pressed="false">空白画布</button>
+          <button type="button" data-preview="selected" aria-pressed="true">选中图形</button>
+          <button type="button" data-preview="editing" aria-pressed="false">编辑文字</button>
+          <button type="button" data-preview="error" aria-pressed="false">打开失败</button>
+        </div>
+      </div>
+    </div>
   </header>
   <main class="editor" data-state="selected" aria-label="拟议的编辑器布局">
     <header class="header">
-      <div class="brand"><span class="logo"><svg class="icon"><use href="#logo"/></svg></span>文档矢量画布</div>
+      <div class="brand"><span class="logo"><svg class="icon" aria-hidden="true"><use href="#logo"/></svg></span>文档矢量画布</div>
       <div class="file dirty"><b id="filename">帧数与预算</b><span class="dot" aria-hidden="true"></span><span id="saving">未保存</span></div>
-      <div class="actions"><span class="fake">新建</span><span class="fake">打开项目</span><span class="fake primary"><svg class="icon"><use href="#save"/></svg>保存项目</span></div>
+      <div class="actions" role="group" aria-label="文件操作示意">
+        <span class="fake file-action file-new"><svg class="icon" aria-hidden="true"><use href="#new"/></svg>新建</span>
+        <span class="fake file-action file-open"><svg class="icon" aria-hidden="true"><use href="#open"/></svg>打开项目</span>
+        <span class="fake file-action file-save"><svg class="icon" aria-hidden="true"><use href="#save"/></svg>保存项目</span>
+      </div>
     </header>
     <div class="toolstrip">
-      <div class="tool-group" aria-label="工具入口示意">
-        <span class="fake tool active" id="select-tool"><svg class="icon"><use href="#pointer"/></svg>选择</span>
-        <span class="fake tool"><svg class="icon"><use href="#rect"/></svg>矩形</span>
-        <span class="fake tool" id="text-tool"><svg class="icon"><use href="#text"/></svg>文字</span>
+      <div class="tool-group" role="group" aria-label="工具入口示意">
+        <span class="fake tool active" id="select-tool"><span class="tool-icon"><svg class="icon" aria-hidden="true"><use href="#pointer"/></svg></span>选择</span>
+        <span class="fake tool"><span class="tool-icon"><svg class="icon" aria-hidden="true"><use href="#rect"/></svg></span>矩形</span>
+        <span class="fake tool" id="text-tool"><span class="tool-icon"><svg class="icon" aria-hidden="true"><use href="#text"/></svg></span>文字</span>
         <span class="sep" aria-hidden="true"></span>
-        <span class="fake tool" id="undo-tool"><svg class="icon"><use href="#undo"/></svg>撤销</span>
-        <span class="fake tool inactive"><svg class="icon"><use href="#redo"/></svg>重做</span>
+        <span class="history">
+          <span class="fake history-action" id="undo-tool"><svg class="icon" aria-hidden="true"><use href="#undo"/></svg>撤销</span>
+          <span class="fake history-action inactive"><svg class="icon" aria-hidden="true"><use href="#redo"/></svg>重做</span>
+        </span>
       </div>
       <span id="hint">拖动矩形移动 · 拖动控制点缩放</span>
     </div>
     <div class="space">
-      <div class="notice" role="status"><b>无法打开项目。</b> 文件格式无效，当前画布未更改。</div>
+      <div class="notice" role="status">
+        <svg class="icon" aria-hidden="true"><use href="#error"/></svg><span><b>无法打开项目。</b> 文件格式无效，当前画布未更改。</span>
+      </div>
       <section class="sheet" aria-label="画布状态示意">
         <span class="sheet-label" aria-hidden="true">PERSONAL / 01</span>
-        <div class="empty" hidden><svg class="icon"><use href="#rect"/></svg><b>从一张空白画布开始</b><span>选择「矩形」拖出图形，或用「文字」加一行说明。</span></div>
+        <div class="empty" hidden><span class="empty-icon"><svg class="icon" aria-hidden="true"><use href="#rect"/></svg></span><b>从一张空白画布开始</b><span>选择「矩形」拖出图形，或用「文字」加一行说明。</span></div>
         <svg class="drawing" viewBox="0 0 500 224" role="img" aria-label="矩形与中文说明的示例布局">
-          <rect x="96" y="35" width="308" height="106" rx="2" fill="#dcebe2" stroke="#48755f" stroke-width="2"/>
-          <text x="250" y="97" text-anchor="middle" fill="#214d40" font-size="21" font-family="system-ui, Microsoft YaHei, sans-serif">帧数增加，预算不变</text>
-          <g data-selection fill="#fffdfa" stroke="#27755f" stroke-width="1.5">
+          <rect class="sample-shape" x="96" y="35" width="308" height="106" rx="2" stroke-width="2"/>
+          <text class="sample-title" x="250" y="97" text-anchor="middle" font-size="21">帧数增加，预算不变</text>
+          <g data-selection>
             <rect x="91" y="30" width="318" height="116" fill="none"/>
-            <rect x="87" y="26" width="8" height="8"/><rect x="405" y="26" width="8" height="8"/>
-            <rect x="87" y="142" width="8" height="8"/><rect x="405" y="142" width="8" height="8"/>
+            <rect x="86" y="25" width="10" height="10"/><rect x="404" y="25" width="10" height="10"/>
+            <rect x="86" y="141" width="10" height="10"/><rect x="404" y="141" width="10" height="10"/>
           </g>
-          <text x="250" y="190" text-anchor="middle" fill="#424e48" font-size="16" font-family="system-ui, Microsoft YaHei, sans-serif">这是一行可继续编辑的中文说明</text>
-          <g data-editor fill="none" stroke="#27755f" stroke-width="1.5"><rect x="116" y="166" width="268" height="35" rx="2"/><path d="M371 173v20"/></g>
+          <text class="sample-caption" x="250" y="190" text-anchor="middle" font-size="16">这是一行可继续编辑的中文说明</text>
+          <g data-editor fill="none"><rect x="116" y="166" width="268" height="35" rx="2"/><path d="M371 173v20"/></g>
         </svg>
       </section>
     </div>
-    <footer class="statusbar"><span id="selection-status">已选中 1 个矩形</span><span>Personal Mode · 本地项目</span></footer>
+    <footer class="statusbar"><span id="selection-status" role="status">已选中 1 个矩形</span><span>Personal Mode · 本地项目</span></footer>
   </main>
   <script>
+    const themes = document.querySelectorAll('[data-theme-choice]')
+    for (const button of themes) button.addEventListener('click', () => {
+      document.documentElement.dataset.theme = button.dataset.themeChoice
+      for (const each of themes) each.setAttribute('aria-pressed', String(each === button))
+    })
+
     const views = {
       empty: ['未命名项目', '尚无改动', '先选一个绘图工具', '0 个对象'],
       selected: ['帧数与预算', '未保存', '拖动矩形移动 · 拖动控制点缩放', '已选中 1 个矩形'],
