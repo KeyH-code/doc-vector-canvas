@@ -8,6 +8,23 @@ const envelope = (nextScene: unknown) => JSON.stringify({ format: 'document-vect
 const c3Download = readFileSync(new URL('../fixtures/projects/personal-v1.json', import.meta.url), 'utf8')
 
 describe('Personal Mode 项目文件', () => {
+  it('新图形保持独立类型，v1 拒绝新类型，正方形必须等宽高', () => {
+    const objects = ['square', 'diamond', 'star'].map(type => ({ ...rectangle(type), type, width: 70, height: 70 }))
+    const source = { id: 'shapes', objects }
+    const file = (objects: unknown[], version: number) => JSON.stringify({ format: 'document-vector-canvas', version, scene: { ...source, objects } })
+    expect(decodeProject(file(objects, 2))).toEqual({ ok: true, scene: source })
+    expect(decodeProject(file(objects, 1))).toMatchObject({ ok: false, code: 'invalid-object' })
+    expect(decodeProject(file([{ ...objects[0], height: 50 }], 2))).toMatchObject({ ok: false, code: 'invalid-object' })
+  })
+
+  it('v2 保存显式端点引用，拒绝失效引用；旧版本不能夹带绑定', () => {
+    const bound = { id: 'line', type: 'arrow', x: 150, y: 92, dx: 10, dy: 0, rotation: 0, stroke: '#355985', strokeWidth: 2,
+      startBinding: { targetId: rectangle().id, kind: 'edge', edge: 1, t: .7 } } as const
+    const source = { ...scene, objects: [rectangle(), bound] }
+    expect(decodeProject(encodeProject(source))).toEqual({ ok: true, scene: source })
+    expect(decodeProject(envelope(source))).toMatchObject({ ok: false, code: 'invalid-object' })
+    expect(decodeProject(encodeProject({ ...source, objects: [bound] }))).toMatchObject({ ok: false, code: 'invalid-connection' })
+  })
   it('完整往返保留稳定 ID、绘制顺序、几何、样式和多行中文', () => {
     const encoded = encodeProject(scene)
     expect(JSON.parse(encoded)).toEqual({ format: 'document-vector-canvas', version: 2, scene })

@@ -1,5 +1,6 @@
 export type ScenePoint = Readonly<{ x: number; y: number }>
-export type BoxType = 'rectangle' | 'ellipse'
+export const boxTypes = ['rectangle', 'ellipse', 'square', 'diamond', 'star'] as const
+export type BoxType = (typeof boxTypes)[number]
 export type SegmentType = 'line' | 'arrow'
 export type DrawingType = BoxType | SegmentType | 'stroke'
 
@@ -27,7 +28,24 @@ export function drawingGeometry(type: DrawingType, points: readonly ScenePoint[]
   const dx = end.x - start.x, dy = end.y - start.y
   if (type === 'line' || type === 'arrow') return dx || dy ? { type, x, y, dx, dy } : undefined
   const width = Math.abs(dx), height = Math.abs(dy)
+  if (type === 'square' && width && height) {
+    const side = Math.min(width, height)
+    return { type, x: start.x + Math.sign(dx) * side / 2, y: start.y + Math.sign(dy) * side / 2, width: side, height: side }
+  }
   return width && height ? { type, x, y, width, height } : undefined
+}
+
+const diamond = [{ x: 0, y: -.5 }, { x: .5, y: 0 }, { x: 0, y: .5 }, { x: -.5, y: 0 }]
+const rawStar = Array.from({ length: 10 }, (_, i) => {
+  const angle = i * Math.PI / 5, radius = i % 2 ? .382 : 1
+  return { x: radius * Math.sin(angle), y: -radius * Math.cos(angle) }
+})
+const starRight = rawStar[2].x, starBottom = rawStar[4].y
+const star = rawStar.map(({ x, y }) => ({ x: x / (2 * starRight), y: (y + 1) / (starBottom + 1) - .5 }))
+
+/** Clockwise from the top tip. The index is also the identity of the outgoing edge. */
+export function polygonVertices(type: 'diamond' | 'star', width: number, height: number): ScenePoint[] {
+  return (type === 'diamond' ? diamond : star).map(({ x, y }) => ({ x: x * width, y: y * height }))
 }
 
 export function strokePoints(data: Pick<Segment, 'type' | 'dx' | 'dy'> | Pick<Stroke, 'type' | 'points'>): readonly ScenePoint[] {

@@ -1,8 +1,10 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import { hasBinding, isConnector } from './core/connections'
+import { connectorTool, curveTool } from './editor/FabricSurface'
 import { useEditor } from './editor/useEditor'
 import { FileMenu } from './ui/FileMenu'
 import { Icon } from './ui/Icon'
-import { ObjectNavigator, objectKinds } from './ui/ObjectNavigator'
+import { ObjectNavigator, objectKind, objectKinds } from './ui/ObjectNavigator'
 import { PropertiesPanel } from './ui/PropertiesPanel'
 import { Toolbar } from './ui/Toolbar'
 import { ViewportControls, WorkspaceDivider } from './ui/ViewportControls'
@@ -27,13 +29,19 @@ export function App() {
   const single = selected.length === 1 ? selected[0] : undefined
   const selectedIds = new Set(selected.map(object => object.id))
   const size = scene.objects.length
-  const status = editing ? '正在编辑文字' : single ? `已选中 1 个${objectKinds[single.type].label}`
+  const status = editing ? '正在编辑文字' : single ? `已选中 1 个${objectKinds[objectKind(single)].label}`
     : selected.length ? `已选中 ${selected.length} 个对象` : `${size} 个对象`
   const hint = editing ? '在画布上输入文字 · 点击空白结束编辑'
     : editor.hand ? '按住拖动画布，只移动视图'
+    : editor.continuing === 'bound' ? '点击落点继续折线 · 确认后更新原末端连接 · Esc 取消'
+    : editor.continuing ? '点击落点继续折线 · Esc 取消'
     : tool === 'text' ? '点击画布添加文字' : tool === 'stroke' ? '按住拖动绘制 · 松手可继续下一笔'
+    : curveTool(tool) ? '按住拖出走向 · 松手生成平滑曲线'
+    : editor.snap && connectorTool(tool) ? '拖出线段 · 端点靠近轮廓可吸附'
     : tool !== 'select' ? `在画布上拖出${objectKinds[tool].label}`
     : single?.type === 'text' ? '拖动文字移动 · 双击编辑'
+    : single && isConnector(single) && single.path?.kind === 'polyline' ? '点击末端继续折线 · 拖动端点可改接'
+    : single && hasBinding(single) ? '拖动圆形端点可改接或解除'
     : single ? '拖动对象移动 · 控制点缩放或旋转'
     : selected.length ? '拖动可整体移动 · Shift 可调整选区' : '先选一个绘图工具'
 
@@ -63,7 +71,7 @@ export function App() {
             <ObjectNavigator key={scene.id} objects={scene.objects} selected={selectedIds} editing={editing}
               onSelect={editor.selectFromNavigator} onLocate={editor.locateFromNavigator} />
           </div>
-          {single && !editing && <PropertiesPanel key={single.id} object={single}
+          {single && !editing && <PropertiesPanel key={single.id} object={single} objects={scene.objects} onLocate={editor.locateFromNavigator}
             onChange={changes => editor.updateProperties(single.id, changes)}
             onPreview={changes => editor.previewProperties(single.id, changes)}
             onFinish={() => editor.finishPropertyPreview(single.id)} />}
@@ -77,7 +85,7 @@ export function App() {
       <section className="workspace" aria-label="画布工作区">
         <div className="space">
           <div className="stage-head">
-            <Toolbar tool={tool} hand={editor.hand} editing={editing} onTool={editor.setTool} onHand={editor.toggleHand}
+            <Toolbar tool={tool} hand={editor.hand} snap={editor.snap} editing={editing} onTool={editor.setTool} onHand={editor.toggleHand} onSnap={editor.toggleSnap}
               onUndo={editor.undo} onRedo={editor.redo}
               canUndo={editor.canUndo} canRedo={editor.canRedo} />
             {editor.notice && <div className="notice" role="alert">
@@ -96,7 +104,7 @@ export function App() {
           </div>
         </div>
         <footer className="statusbar">
-          <div className="status-meta"><span role="status">{status}</span><span className="separator" aria-hidden="true" />{hint}</div>
+          <div className="status-meta"><span role="status">{status}</span><span className="separator" aria-hidden="true" /><span>{hint}</span></div>
           <div className="edit-actions" role="group" aria-label="对象操作">
             <button type="button" disabled={editing || !selected.length} onClick={editor.copy}>复制</button>
             <button type="button" disabled={editing || !editor.canPaste} onClick={editor.paste}>粘贴</button>

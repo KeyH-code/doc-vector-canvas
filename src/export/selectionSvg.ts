@@ -1,4 +1,5 @@
 import { IText, StaticCanvas } from 'fabric'
+import { connectionResolver, indexObjects, isConnector } from '../core/connections'
 import type { CanvasObject } from '../core/scene'
 import { applySceneObject, makeSceneObject } from '../editor/fabricObjects'
 
@@ -60,8 +61,11 @@ export function selectionSvg(objects: readonly CanvasObject[], ids: readonly str
   const canvas = new StaticCanvas(element, { renderOnAddRemove: false, svgViewportTransformation: false })
   try {
     const context = canvas.getContext()
+    // A selected connector still resolves against the full scene, including unselected hosts.
+    const resolver = connectionResolver(indexObjects(objects))
     const bounds = selected.flatMap(object => {
-      const data = object.type === 'text' ? { ...object, text: validXmlText(object.text), fontFamily: validXmlText(object.fontFamily) } : object
+      const data = object.type === 'text' ? { ...object, text: validXmlText(object.text), fontFamily: validXmlText(object.fontFamily) }
+        : isConnector(object) ? resolver.display(object) : object
       const view = makeSceneObject(data)
       applySceneObject(view, data)
       canvas.add(view)

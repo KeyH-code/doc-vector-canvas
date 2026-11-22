@@ -1,4 +1,5 @@
 import { hasExactKeys, isCanvasObject, isDataRecord, isNonBlankString, type CanvasObject, type CanvasScene } from '../core/scene'
+import { invalidConnector, isConnector } from '../core/connections'
 
 const format = 'document-vector-canvas'
 const version = 2
@@ -16,7 +17,7 @@ function isV1Object(object: unknown): object is CanvasObject {
   if (!isDataRecord(object) || typeof object.type !== 'string' || !Object.hasOwn(v1Fields, object.type)) return false
   const fields = [...v1Common, ...v1Fields[object.type as keyof typeof v1Fields]]
   if (object.type !== 'text' && Object.hasOwn(object, 'strokeStyle')) fields.push('strokeStyle')
-  return hasExactKeys(object, fields) && isCanvasObject(object)
+  return hasExactKeys(object, fields) && isCanvasObject(object) && (!isConnector(object) || object.dx !== 0 || object.dy !== 0)
 }
 
 const messages = {
@@ -25,6 +26,7 @@ const messages = {
   'unsupported-version': '当前应用不支持这个项目版本。',
   'invalid-scene': '项目中的画布数据无效。',
   'invalid-object': '项目中有未知类型或属性无效的图元。',
+  'invalid-connection': '项目中有无法定位到有效图形边界的连接。',
   'duplicate-object': '项目中有重复的图元 ID。',
 } as const
 
@@ -63,5 +65,6 @@ export function decodeProject(source: string): ProjectFileResult {
     seen.add(object.id)
     objects.push(object)
   }
+  if (invalidConnector(objects)) return fail('invalid-connection')
   return { ok: true, scene: { id: scene.id, objects } }
 }

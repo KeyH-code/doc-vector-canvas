@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import type { ObjectChanges, SceneCommand } from '../core/commands'
+import { captureSelection, isConnector, offsetCopies } from '../core/connections'
 import { redo, submit, undo } from '../core/history'
 import type { CanvasObject } from '../core/scene'
 import { selectionSvg } from '../export/selectionSvg'
@@ -7,7 +8,8 @@ import { downloadLocalFile, downloadLocalProject, readLocalProject } from '../pr
 import { encodeProject } from '../project/projectFile'
 import { createProjectSession, isProjectDirty, markProjectSaved, openProject, type ProjectSession } from '../project/projectSession'
 import { editingShortcut, isTemporaryHandKey } from '../ui/shortcuts'
-import { FabricSurface, type Tool } from './FabricSurface'
+import { FabricSurface, type Continuation, type Tool } from './FabricSurface'
+import { measureTextAnchor } from './fabricObjects'
 
 const untitled = '未命名项目'
 const discardMessage = '当前项目有未保存的改动。是否放弃改动并继续？'
@@ -18,6 +20,8 @@ export function useEditor(theme: 'light' | 'dark') {
   const sessionRef = useRef(session)
   const [tool, updateTool] = useState<Tool>('select')
   const [hand, setHand] = useState(false)
+  const [snap, setSnap] = useState(false)
+  const [continuing, setContinuing] = useState<Continuation>()
   const [zoom, setZoom] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [clipboard, setClipboard] = useState<readonly CanvasObject[]>([])
@@ -30,14 +34,31 @@ export function useEditor(theme: 'light' | 'dark') {
   const canvas = useRef<HTMLCanvasElement>(null)
   const host = useRef<HTMLDivElement>(null)
 
-  function publish(next: ProjectSession) {
+function publish(next: ProjectSession) {
     sessionRef.current = next
     setSession(next)
   }
 
   function commit(commands: readonly SceneCommand[], select?: readonly string[]) {
     const current = sessionRef.current
-    const result = submit(current.history, commands)
+    const objects = current.history.scene.objects
+    const normalized = commands.map(command => {
+      if (command.type !== 'update' || !(['text', 'fontFamily', 'fontSize'] as const).some(key => Object.hasOwn(command.changes, key))) return command
+      const previous = objects.find(object => object.id === command.id)
+      if (previous?.type !== 'text' || !previous.anchorSize || !(['text', 'fontFamily', 'fontSize'] as const).some(key => command.changes[key] !== undefined && command.changes[key] !== previous[key])) return command
+      return { ...command, changes: { ...command.changes, anchorSize: measureTextAnchor({ ...previous, ...command.changes }) } }
+    })
+    const linkedLegacyText = new Set<string>()
+    for (const command of normalized) {
+      const bindings = command.type === 'create' && isConnector(command.object) ? command.object
+        : command.type === 'update' ? command.changes : undefined
+      if (bindings?.startBinding) linkedLegacyText.add(bindings.startBinding.targetId)
+      if (bindings?.endBinding) linkedLegacyText.add(bindings.endBinding.targetId)
+    }
+    // Serialize measurements only when the user first links legacy text, in the same undo step.
+    const anchorMeasurements: SceneCommand[] = objects.flatMap(object => object.type === 'text' && !object.anchorSize && linkedLegacyText.has(object.id)
+      ? [{ type: 'update', id: object.id, changes: { anchorSize: measureTextAnchor(object) } }] : [])
+    const result = submit(current.history, [...anchorMeasurements, ...normalized])
     if (!result.ok || result.history === current.history) return
     if (select) surface.current?.selectOnRender(select)
     publish({ ...current, history: result.history })
@@ -75,6 +96,7 @@ export function useEditor(theme: 'light' | 'dark') {
       tool: updateTool,
       editing: setEditing,
       zoom: setZoom,
+      continuing: setContinuing,
     })
     surface.current = editor
     return () => { surface.current = null; editor.dispose() }
@@ -93,8 +115,10 @@ export function useEditor(theme: 'light' | 'dark') {
   }, [scene, theme])
   useLayoutEffect(() => { surface.current!.setTool(tool) }, [tool])
   useLayoutEffect(() => { surface.current!.setHand(hand) }, [hand])
+  useLayoutEffect(() => { surface.current!.setSnap(snap) }, [snap])
 
   function setTool(next: Tool) {
+    surface.current?.cancelExtension()
     setHand(false)
     updateTool(next)
   }
@@ -197,7 +221,11 @@ export function useEditor(theme: 'light' | 'dark') {
     try {
       const source = sessionRef.current.history.scene.objects
       const preview = propertyPreview.current
-      const objects = preview ? source.map(object => object.id === preview.id ? { ...object, ...preview.changes } : object) : source
+      const objects = preview ? source.map(object => {
+        if (object.id !== preview.id) return object
+        const projected = { ...object, ...preview.changes }
+        return projected.type === 'text' ? { ...projected, anchorSize: measureTextAnchor(projected) } : projected
+      }) : source
       const svg = selectionSvg(objects, selectedIds)
       if (!svg) return
       downloadLocalFile(`${projectName}-选区.svg`, svg, 'image/svg+xml;charset=utf-8')
@@ -209,14 +237,14 @@ export function useEditor(theme: 'light' | 'dark') {
 
   function copy() {
     finishPropertyPreview()
-    const objects = sessionRef.current.history.scene.objects.filter(object => selectedIds.includes(object.id))
-    if (objects.length) setClipboard(structuredClone(objects))
+    const objects = captureSelection(sessionRef.current.history.scene.objects, selectedIds)
+    if (objects.length) setClipboard(objects)
   }
 
   function paste() {
     if (!clipboard.length) return
     finishPropertyPreview()
-    const copies = clipboard.map(object => ({ ...object, id: crypto.randomUUID(), x: object.x + 24, y: object.y + 24 }))
+    const copies = offsetCopies(clipboard, () => crypto.randomUUID(), { x: 24, y: 24 })
     setTool('select')
     commit(copies.map(object => ({ type: 'create', object })), copies.map(object => object.id))
   }
@@ -234,6 +262,7 @@ export function useEditor(theme: 'light' | 'dark') {
   useLayoutEffect(() => {
     function handleKey(event: KeyboardEvent) {
       if (editing || surface.current?.isComposing()) return
+      if (event.key === 'Escape' && !event.defaultPrevented && surface.current?.cancelExtension()) { event.preventDefault(); return }
       if (isTemporaryHandKey(event)) {
         event.preventDefault()
         surface.current?.setHand(true, true)
@@ -267,7 +296,8 @@ export function useEditor(theme: 'light' | 'dark') {
   return { scene, tool, setTool, selected, editing, canvas, host, canUndo, canRedo, canPaste: clipboard.length > 0,
     undo: () => travel(undo), redo: () => travel(redo), copy, paste, remove, previewProperties, finishPropertyPreview, updateProperties,
     projectName, notice, reading, newProject, saveProject, openLocalProject, exportSelection,
-    hand, zoom, toggleHand, zoomTo: (zoom: number) => surface.current?.setZoom(zoom), fitContent: () => surface.current?.fitContent(),
+    hand, snap, zoom, continuing, toggleHand, toggleSnap: () => setSnap(active => !active),
+    zoomTo: (zoom: number) => surface.current?.setZoom(zoom), fitContent: () => surface.current?.fitContent(),
     selectFromNavigator, locateFromNavigator,
     hasPendingProperties, isComposing: () => surface.current?.isComposing() ?? false }
 }

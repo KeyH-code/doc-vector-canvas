@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyCommands, type SceneCommand } from '../../src/core/commands'
-import { createScene } from '../../src/core/scene'
+import { resolveEndpoints } from '../../src/core/connections'
+import { createScene, type LineObject } from '../../src/core/scene'
 import { rectangle, text } from './fixtures/scenes'
 
 describe('画布命令', () => {
@@ -120,5 +121,17 @@ describe('画布命令', () => {
     expect(applyCommands(scene, [{ type: 'duplicate', id: 'rect-b', newId: 'copy' }], scope)).toMatchObject({ ok: false, code: 'out-of-scope' })
     expect(applyCommands(scene, [{ type: 'duplicate', id: 'rect-b', newId: 'rect-c' }], { ...scope, allowCreate: true }))
       .toMatchObject({ ok: false, code: 'duplicate-object' })
+  })
+
+  it('命令复制单根连线不会复制原绑定，保留宿主边界上的实际坐标', () => {
+    const host = rectangle()
+    const line: LineObject = { id: 'line', type: 'line', x: 160, y: 92, dx: 20, dy: 0, rotation: 0,
+      stroke: '#355985', strokeWidth: 4, startBinding: { targetId: host.id, kind: 'edge', edge: 1, t: .75 } }
+    const scene = { id: 'links', objects: [host, line] }
+    const result = applyCommands(scene, [{ type: 'duplicate', id: 'line', newId: 'copy' }])
+    if (!result.ok) throw new Error(result.code)
+    const copy = result.scene.objects[2] as LineObject
+    expect(copy).not.toHaveProperty('startBinding')
+    expect(resolveEndpoints(copy, [])).toEqual(resolveEndpoints(line, scene.objects))
   })
 })

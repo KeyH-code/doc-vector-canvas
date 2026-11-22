@@ -1,29 +1,43 @@
 import { useState } from 'react'
+import { isConnector } from '../core/connections'
 import type { CanvasObject } from '../core/scene'
 import { Icon } from './Icon'
 
 export const objectKinds = {
   rectangle: { label: '矩形', icon: 'rect' },
   ellipse: { label: '椭圆', icon: 'ellipse' },
+  square: { label: '正方形', icon: 'square' },
+  diamond: { label: '菱形', icon: 'diamond' },
+  star: { label: '五角星', icon: 'star' },
   line: { label: '直线', icon: 'line' },
   arrow: { label: '箭头', icon: 'arrow' },
+  polyline: { label: '折线', icon: 'line' },
+  polylineArrow: { label: '折线箭头', icon: 'arrow' },
+  curve: { label: '曲线', icon: 'line' },
+  curveArrow: { label: '曲线箭头', icon: 'arrow' },
   stroke: { label: '笔迹', icon: 'pen' },
   text: { label: '文字', icon: 'text' },
 } as const
+
+export type ObjectKind = keyof typeof objectKinds
+export function objectKind(object: CanvasObject): ObjectKind {
+  if (!isConnector(object) || !object.path) return object.type
+  return object.type === 'line' ? object.path.kind : object.path.kind === 'polyline' ? 'polylineArrow' : 'curveArrow'
+}
 
 export function ObjectNavigator({ objects, selected, editing, onSelect, onLocate }: {
   objects: readonly CanvasObject[]; selected: ReadonlySet<string>; editing: boolean
   onSelect: (ids: readonly string[], extend: boolean) => void; onLocate: (id: string) => void
 }) {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<CanvasObject['type']>>(() => new Set())
-  const groups = new Map<CanvasObject['type'], CanvasObject[]>()
+  const [collapsed, setCollapsed] = useState<ReadonlySet<ObjectKind>>(() => new Set())
+  const groups = new Map<ObjectKind, CanvasObject[]>()
   for (const object of objects) {
-    const members = groups.get(object.type)
+    const kind = objectKind(object), members = groups.get(kind)
     if (members) members.push(object)
-    else groups.set(object.type, [object])
+    else groups.set(kind, [object])
   }
 
-  function toggle(type: CanvasObject['type']) {
+  function toggle(type: ObjectKind) {
     setCollapsed(previous => {
       const next = new Set(previous)
       if (!next.delete(type)) next.add(type)
@@ -36,7 +50,7 @@ export function ObjectNavigator({ objects, selected, editing, onSelect, onLocate
     <div className="canvas-entry"><Icon name="page" />当前画布</div>
     {groups.size === 0 ? <p className="object-empty">暂无对象</p> : (
       <ul className="object-list" aria-label="画布对象">
-        {(Object.keys(objectKinds) as CanvasObject['type'][]).map(type => {
+        {(Object.keys(objectKinds) as ObjectKind[]).map(type => {
           const members = groups.get(type)
           if (!members) return null
           const { label, icon } = objectKinds[type]

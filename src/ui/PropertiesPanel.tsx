@@ -1,6 +1,9 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { ObjectChanges } from '../core/commands'
+import { connectorForDisplay, indexObjects, isConnector, resolveEndpoints, segmentGeometry } from '../core/connections'
+import { pathLength } from '../core/linePaths'
 import type { CanvasObject } from '../core/scene'
+import { ConnectionsPanel } from './ConnectionsPanel'
 
 const fonts = [
   ['Microsoft YaHei, sans-serif', '微软雅黑'],
@@ -49,16 +52,23 @@ function NumberField({ label, value, min, max, onPreview, onFinish }: {
     }} /></label>
 }
 
-export function PropertiesPanel({ object, onChange, onPreview, onFinish }: {
-  object: CanvasObject; onChange: (changes: ObjectChanges) => void; onPreview: (changes: ObjectChanges) => void; onFinish: () => void
+export function PropertiesPanel({ object, objects, onLocate, onChange, onPreview, onFinish }: {
+  object: CanvasObject; objects: readonly CanvasObject[]; onLocate: (id: string) => void
+  onChange: (changes: ObjectChanges) => void; onPreview: (changes: ObjectChanges) => void; onFinish: () => void
 }) {
+  const line = isConnector(object) ? object : undefined
+  const segment = line ? segmentGeometry(resolveEndpoints(line, objects)) : undefined
+  const path = line?.path ? connectorForDisplay(line, indexObjects(objects)).path : undefined
+  const geometry = segment ?? object
+  const angle = segment ? Math.atan2(segment.dy, segment.dx) * 180 / Math.PI : object.rotation
   return <section className="properties" aria-labelledby="properties-heading">
     <h2 id="properties-heading">对象属性</h2>
     <dl className="property-summary">
-      <div><dt>位置 X, Y</dt><dd>{displayNumber(object.x)}, {displayNumber(object.y)}</dd></div>
-      <div><dt>旋转</dt><dd>{displayNumber(object.rotation)}°</dd></div>
+      <div><dt>位置 X, Y</dt><dd>{displayNumber(geometry.x)}, {displayNumber(geometry.y)}</dd></div>
+      <div><dt>{segment ? '线段角度' : '旋转'}</dt><dd>{displayNumber(angle)}°</dd></div>
       {'width' in object && <div><dt>宽 × 高</dt><dd>{displayNumber(object.width)} × {displayNumber(object.height)}</dd></div>}
-      {'dx' in object && <div><dt>长度</dt><dd>{displayNumber(Math.hypot(object.dx, object.dy))}</dd></div>}
+      {segment && <div><dt>长度</dt><dd>{displayNumber(path ? pathLength(path) : Math.hypot(segment.dx, segment.dy))}</dd></div>}
+      {path && <div><dt>段数</dt><dd>{path.segments.length}</dd></div>}
       {'points' in object && <div><dt>笔迹点数</dt><dd>{object.points.length}</dd></div>}
     </dl>
     <div className="property-fields">
@@ -71,7 +81,7 @@ export function PropertiesPanel({ object, onChange, onPreview, onFinish }: {
           onPreview={fontSize => onPreview({ fontSize })} onFinish={onFinish} />
         <ColorField label="文字颜色" value={object.color} onPreview={color => onPreview({ color })} onFinish={onFinish} />
       </> : <>
-        {(object.type === 'rectangle' || object.type === 'ellipse') && <>
+        {'fill' in object && <>
           <ColorField label="填充颜色" value={object.fill === 'transparent' ? '#e0eaf3' : object.fill}
             disabled={object.fill === 'transparent'} onPreview={fill => onPreview({ fill })} onFinish={onFinish} />
           <label className="property-check"><input type="checkbox" checked={object.fill === 'transparent'}
@@ -85,5 +95,6 @@ export function PropertiesPanel({ object, onChange, onPreview, onFinish }: {
         </select></label>
       </>}
     </div>
+    <ConnectionsPanel object={object} objects={objects} onLocate={onLocate} />
   </section>
 }

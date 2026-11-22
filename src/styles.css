@@ -122,6 +122,13 @@ button:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px;
 .property-summary { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
 .property-summary div { display: flex; justify-content: space-between; gap: 6px; }
 .property-summary dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.sidebar .connections { margin-top: 10px; padding: 8px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.connections h3, .connections p { margin: 0 0 4px; font-size: inherit; }
+.connections ul { list-style: none; margin: 0; padding: 0; }
+.connections li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.connections button { display: inline-flex; gap: 4px; align-items: center; padding: 2px 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--accent); }
+.connections button:hover { background: var(--active-bg); }
+.connections .icon { width: 13px; height: 13px; }
 .property-fields { display: grid; gap: 6px; }
 .property-fields label { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 29px; font-size: 12px; }
 .property-fields input:not([type='checkbox']), .property-fields select { width: 99px; min-width: 0; height: 29px; padding: 2px 5px; border: 1px solid var(--line); border-radius: 5px; background: var(--actions-fill); color: var(--ink); font: inherit; }
@@ -145,6 +152,10 @@ button:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px;
 .tool-icon { position: relative; display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid transparent; border-radius: 50%; }
 .tool[aria-pressed='true'] .tool-icon { border-color: currentColor; background: var(--active-bg); }
 .tool[aria-pressed='true'] .tool-icon::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 7px; height: 7px; border: 1px solid var(--surface); border-radius: 50%; background: currentColor; }
+.extra-shapes { position: relative; }
+.extra-shape-options { position: absolute; z-index: 2; inset: calc(100% + 5px) 0 auto auto; min-width: 104px; padding: 4px; border: 1px solid var(--active-line); border-radius: 8px; background: var(--surface); box-shadow: var(--sheet-shadow); }
+.extra-shape-options button { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 7px; background: transparent; border: 0; border-radius: 4px; color: var(--ink); white-space: nowrap; }
+.extra-shape-options button:is(:hover, :focus-visible) { background: var(--active-bg); color: var(--accent); }
 .history { display: inline-flex; align-items: center; padding: 2px 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--history-bg); }
 .history button { min-height: 26px; padding-inline: 7px; font-size: 13px; }
 .history button + button { border-inline-start: 1px solid var(--line); }

@@ -1,4 +1,6 @@
-import type { ScenePoint } from './geometry'
+import { boxTypes, type BoxType, type ScenePoint } from './geometry'
+import { bindingKey, ends, type EndpointBinding } from './connections'
+import { maxPathSegments, type LinePath } from './linePaths'
 
 type PositionedObject = Readonly<{
   id: string
@@ -10,15 +12,18 @@ type PositionedObject = Readonly<{
 export type StrokeStyle = 'solid' | 'dashed'
 type Outline = Readonly<{ stroke: string; strokeWidth: number; strokeStyle?: StrokeStyle }>
 
-type BoxObject = PositionedObject & Outline & Readonly<{
+type BoxFields = PositionedObject & Outline & Readonly<{
   width: number
   height: number
   fill: string
 }>
 
-export type RectangleObject = BoxObject & Readonly<{ type: 'rectangle' }>
-export type EllipseObject = BoxObject & Readonly<{ type: 'ellipse' }>
-export type LineObject = PositionedObject & Outline & Readonly<{ type: 'line' | 'arrow'; dx: number; dy: number }>
+export type BoxObject = { [Type in BoxType]: BoxFields & Readonly<{ type: Type }> }[BoxType]
+export type RectangleObject = Extract<BoxObject, { type: 'rectangle' }>
+export type EllipseObject = Extract<BoxObject, { type: 'ellipse' }>
+export type LineObject = PositionedObject & Outline & Readonly<{
+  type: 'line' | 'arrow'; dx: number; dy: number; startBinding?: EndpointBinding; endBinding?: EndpointBinding; path?: LinePath
+}>
 export type StrokeObject = PositionedObject & Outline & Readonly<{ type: 'stroke'; points: readonly ScenePoint[] }>
 
 export type TextObject = PositionedObject & Readonly<{
@@ -27,9 +32,10 @@ export type TextObject = PositionedObject & Readonly<{
   fontFamily: string
   fontSize: number
   color: string
+  anchorSize?: Readonly<{ width: number; height: number }>
 }>
 
-export type CanvasObject = RectangleObject | EllipseObject | LineObject | StrokeObject | TextObject
+export type CanvasObject = BoxObject | LineObject | StrokeObject | TextObject
 export type CanvasScene = Readonly<{ id: string; objects: readonly CanvasObject[] }>
 
 const commonKeys = ['id', 'type', 'x', 'y', 'rotation']
@@ -77,6 +83,24 @@ function isScenePoint(value: unknown): value is ScenePoint {
   return isDataRecord(value) && hasExactKeys(value, ['x', 'y']) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
 }
 
+function isBinding(value: unknown): value is EndpointBinding {
+  if (!isDataRecord(value) || !isNonBlankString(value.targetId)) return false
+  if (value.kind === 'ellipse') return hasExactKeys(value, ['targetId', 'kind', 'angle']) && isFiniteNumber(value.angle)
+  if (!isFiniteNumber(value.t) || value.t < 0 || value.t > 1) return false
+  const index = value.kind === 'edge' ? 'edge' : value.kind === 'path' ? 'segment' : undefined
+  return !!index && hasExactKeys(value, ['targetId', 'kind', index, 't']) && Number.isSafeInteger(value[index]) && (value[index] as number) >= 0
+}
+
+function isLinePath(value: unknown): value is LinePath {
+  if (!isDataRecord(value) || !hasExactKeys(value, ['kind', 'start', 'segments']) ||
+      (value.kind !== 'polyline' && value.kind !== 'curve') || !isScenePoint(value.start) ||
+      !Array.isArray(value.segments) || !value.segments.length || value.segments.length > maxPathSegments) return false
+  const cubic = value.kind === 'curve'
+  return Array.from(value.segments).every((part: unknown, index: number) => isDataRecord(part) &&
+    hasExactKeys(part, cubic ? ['id', 'to', 'c1', 'c2'] : ['id', 'to']) && part.id === index && isScenePoint(part.to) &&
+    (!cubic || (isScenePoint(part.c1) && isScenePoint(part.c2))))
+}
+
 function isStrokePath(value: unknown): value is readonly ScenePoint[] {
   if (!Array.isArray(value) || value.length < 2) return false
   const first: unknown = value[0]
@@ -93,23 +117,32 @@ export function isCanvasObject(value: unknown): value is CanvasObject {
   if (!isDataRecord(value) || !isNonBlankString(value.id) ||
       !isFiniteNumber(value.x) || !isFiniteNumber(value.y) || !isFiniteNumber(value.rotation)) return false
 
-  if (value.type === 'rectangle' || value.type === 'ellipse') {
+  if (boxTypes.some(type => type === value.type)) {
     return hasOutlineKeys(value, rectangleKeys) && isPositive(value.width) && isPositive(value.height) &&
+      (value.type !== 'square' || value.width === value.height) &&
       (value.fill === 'transparent' || isColor(value.fill)) && hasOutline(value)
   }
   if (value.type === 'line' || value.type === 'arrow') {
-    return hasOutlineKeys(value, lineKeys) && hasOutline(value) && isFiniteNumber(value.dx) && isFiniteNumber(value.dy) &&
-      (value.dx !== 0 || value.dy !== 0)
+    const present = ends.map(end => bindingKey[end]).filter(key => Object.hasOwn(value, key))
+    const path = Object.hasOwn(value, 'path')
+    return hasOutlineKeys(value, [...lineKeys, ...present, ...(path ? ['path'] : [])]) && hasOutline(value) &&
+      isFiniteNumber(value.dx) && isFiniteNumber(value.dy) && present.every(key => isBinding(value[key])) && (!path || isLinePath(value.path))
   }
   if (value.type === 'stroke') return hasOutlineKeys(value, strokeKeys) && hasOutline(value) && isStrokePath(value.points)
-  return value.type === 'text' && hasExactKeys(value, textKeys) && typeof value.text === 'string' &&
+  const measured = Object.hasOwn(value, 'anchorSize')
+  return value.type === 'text' && hasExactKeys(value, measured ? [...textKeys, 'anchorSize'] : textKeys) && typeof value.text === 'string' &&
+    (!measured || (isDataRecord(value.anchorSize) && hasExactKeys(value.anchorSize, ['width', 'height']) &&
+      isPositive(value.anchorSize.width) && isPositive(value.anchorSize.height))) &&
     isNonBlankString(value.fontFamily) && isPositive(value.fontSize) && isColor(value.color)
 }
 
-function sameField(a: unknown, b: unknown) {
+function sameField(a: unknown, b: unknown): boolean {
   if (a === b) return true
+  if (isDataRecord(a) && isDataRecord(b)) {
+    return Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([key, value]) => Object.hasOwn(b, key) && sameField(value, b[key]))
+  }
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false
-  return a.every((point: ScenePoint, index) => point.x === b[index].x && point.y === b[index].y)
+  return a.every((value, index) => sameField(value, b[index]))
 }
 
 export function createScene(id: string): CanvasScene {
