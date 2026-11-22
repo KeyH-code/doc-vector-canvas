@@ -37,6 +37,7 @@ describe('不启动页面的项目闭环', () => {
     const active = { ...blank, history: edited.history }
     expect(isProjectDirty(active)).toBe(true)
     const saved = encodeProject(active.history.scene)
+    expect(JSON.parse(saved).version).toBe(2)
     expect(isProjectDirty(markProjectSaved(active))).toBe(false)
     const reopened = openProject(createProjectSession('new-session'), { status: 'read', source: saved })
     if (reopened.status !== 'opened') throw new Error('项目没有打开')
@@ -64,6 +65,8 @@ describe('不启动页面的项目闭环', () => {
     }
     expect(openProject(unsaved, { status: 'read-error' })).toMatchObject({ status: 'error', code: 'read-error' })
     expect(openProject(unsaved, { status: 'read', source: '{' })).toMatchObject({ status: 'error', code: 'invalid-json' })
+    expect(openProject(unsaved, { status: 'read', source: JSON.stringify({ ...JSON.parse(valid), version: 42 }) }))
+      .toEqual({ status: 'error', code: 'unsupported-version', message: expect.any(String), session: unsaved })
     expect(openProject(unsaved, { status: 'read', source: valid })).toEqual({ status: 'needs-confirmation', session: unsaved })
     const opened = openProject(unsaved, { status: 'read', source: valid, discardChanges: true })
     expect(opened).toMatchObject({ status: 'opened', session: { history: { scene: edited.history.scene, past: [], future: [] } } })

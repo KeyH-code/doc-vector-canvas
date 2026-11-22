@@ -7,6 +7,8 @@ const fonts = [
   ['SimSun, serif', '宋体'],
 ] as const
 
+const displayNumber = (value: number) => String(Number(value.toFixed(2)))
+
 function ColorField({ label, value, disabled, onPreview, onFinish }: {
   label: string; value: string; disabled?: boolean; onPreview: (value: string) => void; onFinish: () => void
 }) {
@@ -52,6 +54,13 @@ export function PropertiesPanel({ object, onChange, onPreview, onFinish }: {
 }) {
   return <section className="properties" aria-labelledby="properties-heading">
     <h2 id="properties-heading">对象属性</h2>
+    <dl className="property-summary">
+      <div><dt>位置 X, Y</dt><dd>{displayNumber(object.x)}, {displayNumber(object.y)}</dd></div>
+      <div><dt>旋转</dt><dd>{displayNumber(object.rotation)}°</dd></div>
+      {'width' in object && <div><dt>宽 × 高</dt><dd>{displayNumber(object.width)} × {displayNumber(object.height)}</dd></div>}
+      {'dx' in object && <div><dt>长度</dt><dd>{displayNumber(Math.hypot(object.dx, object.dy))}</dd></div>}
+      {'points' in object && <div><dt>笔迹点数</dt><dd>{object.points.length}</dd></div>}
+    </dl>
     <div className="property-fields">
       {object.type === 'text' ? <>
         <label>字体<select value={object.fontFamily} onChange={e => onChange({ fontFamily: e.currentTarget.value })}>

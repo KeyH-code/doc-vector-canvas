@@ -3,11 +3,10 @@ import type { ObjectChanges, SceneCommand } from '../core/commands'
 import { drawingGeometry, type DrawingType, type ScenePoint } from '../core/geometry'
 import { isCanvasObject, type CanvasObject, type CanvasScene, type TextObject } from '../core/scene'
 import { applySceneObject, makeSceneObject, makeShape, paintObject, paintShape, pathOffset, type Shape, type ShapeView } from './fabricObjects'
+import { fitViewport, initialViewport, panViewport, viewportMatrix, zoomViewport, type Viewport } from './viewport'
 
 export type Tool = 'select' | 'text' | DrawingType
 
-export const paperWidth = 1000
-export const paperHeight = paperWidth * 450 / 760
 const rectangleStyle = { fill: '#e0eaf3', stroke: '#6381a2', strokeWidth: 2 }
 const strokeStyle = { stroke: '#547798', strokeWidth: 4 }
 const textStyle = { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 34, color: '#797b82' }
@@ -27,6 +26,12 @@ function shapeFromGesture(id: string, type: DrawingType, points: readonly SceneP
 export class FabricSurface {
   private readonly canvas: Canvas
   private readonly resize: ResizeObserver
+  private readonly listeners = new AbortController()
+  private viewport?: Viewport
+  private size = { width: 1, height: 1 }
+  private hand = false
+  private temporaryHand = false
+  private pan?: { id: number; x: number; y: number }
   private readonly objects = new Map<string, { type: CanvasObject['type']; data: CanvasObject; view: FabricObject }>()
   private readonly ids = new WeakMap<FabricObject, string>()
   private tool: Tool = 'select'
@@ -45,24 +50,58 @@ export class FabricSurface {
     selection: (ids: string[]) => void
     tool: (tool: Tool) => void
     editing: (editing: boolean) => void
+    zoom: (zoom: number) => void
   }) {
-    const canvas = this.canvas = new Canvas(element, { selection: true, selectionKey: 'shiftKey', uniScaleKey: null,
+    const canvas = this.canvas = new Canvas(element, { enablePointerEvents: true, selection: true, selectionKey: 'shiftKey', uniScaleKey: null,
       preserveObjectStacking: true, targetFindTolerance: 7 })
     this.resize = new ResizeObserver(([entry]) => {
       const width = Math.floor(entry.contentRect.width)
       const height = Math.floor(entry.contentRect.height)
       if (width < 1 || height < 1) return
-      const scale = Math.min(width / paperWidth, height / paperHeight)
+      this.size = { width, height }
       canvas.setDimensions({ width, height })
-      canvas.setViewportTransform([scale, 0, 0, scale, (width - paperWidth * scale) / 2, (height - paperHeight * scale) / 2])
+      this.showViewport(this.viewport ?? initialViewport(this.size))
     })
     this.resize.observe(host)
+    const layer = canvas.upperCanvasEl
+    const signal = this.listeners.signal
+    layer.addEventListener('pointerdown', event => {
+      if ((!this.hand && !this.temporaryHand) || this.editing || !event.isPrimary || event.button !== 0) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.pan = { id: event.pointerId, x: event.clientX, y: event.clientY }
+      layer.setPointerCapture(event.pointerId)
+      this.showCursor()
+    }, { signal, capture: true })
+    layer.addEventListener('pointermove', event => {
+      const previous = this.pan
+      if (!previous || previous.id !== event.pointerId || !this.viewport) return
+      event.stopImmediatePropagation()
+      this.pan = { id: previous.id, x: event.clientX, y: event.clientY }
+      this.showViewport(panViewport(this.viewport, { x: event.clientX - previous.x, y: event.clientY - previous.y }))
+    }, { signal, capture: true })
+    const endPan = (event: PointerEvent) => {
+      if (this.pan?.id !== event.pointerId) return
+      event.stopImmediatePropagation()
+      this.pan = undefined
+      this.showCursor()
+    }
+    for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) layer.addEventListener(name, endPan, { signal, capture: true })
+    layer.addEventListener('wheel', event => {
+      if ((!event.ctrlKey && !event.metaKey) || !this.viewport || this.editing || this.pan || this.drawing) return
+      event.preventDefault()
+      const bounds = layer.getBoundingClientRect()
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? this.size.height : 1
+      const delta = Math.max(-500, Math.min(500, event.deltaY * unit))
+      this.showViewport(zoomViewport(this.viewport, this.size, { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+        this.viewport.zoom * Math.exp(-delta * .002)))
+    }, { signal, passive: false })
 
     canvas.on('mouse:down', ({ e, scenePoint }) => {
       if ('button' in e && e.button !== 0) return
       if (this.tool === 'text') this.placingText = true
       if (this.tool === 'select' || this.tool === 'text' || this.drawing) return
-      this.drawing = { id: crypto.randomUUID(), type: this.tool, points: [this.paperPoint(scenePoint)] }
+      this.drawing = { id: crypto.randomUUID(), type: this.tool, points: [scenePoint] }
     })
     canvas.on('mouse:move', ({ scenePoint }) => {
       const drawing = this.drawing
@@ -85,7 +124,7 @@ export class FabricSurface {
     canvas.on('mouse:up', ({ e, scenePoint }) => {
       if ('button' in e && e.button !== 0) return
       if (this.tool === 'text' && this.placingText) {
-        this.beginText(this.paperPoint(scenePoint))
+        this.beginText(scenePoint)
         return
       }
       if (!this.drawing) return
@@ -107,10 +146,6 @@ export class FabricSurface {
     canvas.on('selection:created', notifySelection)
     canvas.on('selection:updated', notifySelection)
     canvas.on('selection:cleared', notifySelection)
-    canvas.on('object:moving', ({ target }) => {
-      if (target instanceof ActiveSelection) this.keepGroupOnPaper(target)
-      else this.keepOnPaper(target)
-    })
     canvas.on('object:modified', ({ target, transform }) => {
       if (this.syncing || !transform) return // IText also emits a modification on edit exit, without a transform.
       const grouped = target instanceof ActiveSelection
@@ -119,7 +154,7 @@ export class FabricSurface {
         const id = this.ids.get(view)
         const data = id ? this.objects.get(id)?.data : undefined
         if (!id || !data) return []
-        const center = grouped ? view.getCenterPoint() : this.keepOnPaper(view)
+        const center = view.getCenterPoint()
         const { x, y } = view instanceof Polyline ? center.subtract(pathOffset(view)) : center
         const changes: ObjectChanges = { x, y }
         if (!grouped) {
@@ -153,13 +188,50 @@ export class FabricSurface {
     canvas.on('text:editing:exited', ({ target }) => this.commitText(target))
   }
 
-  private paperPoint(point: Point) {
-    return new Point(Math.max(0, Math.min(paperWidth, point.x)), Math.max(0, Math.min(paperHeight, point.y)))
+  private showViewport(view: Viewport) {
+    const previous = this.viewport
+    this.viewport = view
+    this.canvas.setViewportTransform(viewportMatrix(view, this.size))
+    this.canvas.getActiveObject()?.setCoords()
+    if (previous?.zoom !== view.zoom) this.events.zoom(view.zoom)
+  }
+
+  resetViewport() {
+    this.showViewport(initialViewport(this.size))
+  }
+
+  setZoom(zoom: number) {
+    if (this.viewport) this.showViewport(zoomViewport(this.viewport, this.size, { x: this.size.width / 2, y: this.size.height / 2 }, zoom))
+  }
+
+  fitContent(id?: string) {
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+    for (const [objectId, { view }] of this.objects) {
+      if (id !== undefined && objectId !== id) continue
+      const box = view.getBoundingRect()
+      left = Math.min(left, box.left); top = Math.min(top, box.top)
+      right = Math.max(right, box.left + box.width); bottom = Math.max(bottom, box.top + box.height)
+    }
+    const fit = fitViewport(this.size, { left, top, width: right - left, height: bottom - top })
+    if (fit) this.showViewport(fit)
+    else if (id === undefined) this.resetViewport()
+  }
+
+  private showCursor() {
+    const cursor = this.pan ? 'grabbing' : this.hand || this.temporaryHand ? 'grab' : this.tool === 'select' ? 'default' : 'crosshair'
+    this.canvas.defaultCursor = cursor
+    this.canvas.setCursor(cursor)
+  }
+
+  setHand(hand: boolean, temporary = false) {
+    if (temporary) this.temporaryHand = hand
+    else this.hand = hand
+    this.showCursor()
   }
 
   private drawTo(point: Point, ending = false) {
     const drawing = this.drawing!
-    const next = this.paperPoint(point)
+    const next = point
     if (drawing.type === 'stroke') {
       const last = drawing.points[drawing.points.length - 1]
       const distance = Math.hypot(next.x - last.x, next.y - last.y)
@@ -168,28 +240,6 @@ export class FabricSurface {
       drawing.points[1] = next
     }
     return shapeFromGesture(drawing.id, drawing.type, drawing.points)
-  }
-
-  private keepOnPaper(object: FabricObject) {
-    const center = object.getCenterPoint()
-    const next = this.paperPoint(center)
-    if (!next.eq(center)) {
-      object.setPositionByOrigin(next, 'center', 'center')
-      object.setCoords()
-    }
-    return next
-  }
-
-  private keepGroupOnPaper(group: ActiveSelection) {
-    let minX = -Infinity, minY = -Infinity, maxX = Infinity, maxY = Infinity
-    for (const object of group.getObjects()) {
-      const { x, y } = object.getCenterPoint()
-      minX = Math.max(minX, -x); maxX = Math.min(maxX, paperWidth - x)
-      minY = Math.max(minY, -y); maxY = Math.min(maxY, paperHeight - y)
-    }
-    const dx = minX <= maxX ? Math.max(minX, Math.min(0, maxX)) : 0
-    const dy = minY <= maxY ? Math.max(minY, Math.min(0, maxY)) : 0
-    if (dx || dy) group.setPositionByOrigin(group.getCenterPoint().add(new Point(dx, dy)), 'center', 'center')
   }
 
   private selectedIds() {
@@ -201,6 +251,35 @@ export class FabricSurface {
 
   selectOnRender(ids: readonly string[]) {
     this.pendingSelection = ids
+  }
+
+  selectFromNavigator(ids: readonly string[], extend: boolean) {
+    const selected = new Set(extend ? this.selectedIds() : [])
+    const remove = extend && ids.every(id => selected.has(id))
+    for (const id of ids) remove ? selected.delete(id) : selected.add(id)
+    this.applySelection([...selected])
+  }
+
+  private applySelection(ids: readonly string[]) {
+    const active = this.canvas.getActiveObject()
+    const targets = ids.flatMap(id => {
+      const object = this.objects.get(id)?.view
+      return object ? [object] : []
+    })
+    const syncing = this.syncing
+    this.syncing = true
+    try {
+      if (targets.length !== 1 || targets[0] !== active) {
+        this.canvas.discardActiveObject()
+        if (targets.length > 1) this.canvas.setActiveObject(new ActiveSelection(targets, { canvas: this.canvas, hasControls: false,
+          borderColor: targets[0].borderColor }))
+        else if (targets[0]) this.canvas.setActiveObject(targets[0])
+      }
+    } finally {
+      this.syncing = syncing
+    }
+    this.events.selection(this.selectedIds())
+    this.canvas.requestRenderAll()
   }
 
   previewProperties(id: string, changes: ObjectChanges) {
@@ -220,7 +299,7 @@ export class FabricSurface {
     this.tool = tool
     this.canvas.selection = tool === 'select'
     this.canvas.skipTargetFind = tool !== 'select'
-    this.canvas.defaultCursor = tool === 'select' ? 'default' : 'crosshair'
+    this.showCursor()
     if (tool !== 'select') {
       this.canvas.discardActiveObject()
       this.canvas.requestRenderAll()
@@ -369,14 +448,7 @@ export class FabricSurface {
         applySceneObject(object, data)
         canvas.moveObjectTo(object, index)
       })
-      const targets = selected.flatMap(id => {
-        const object = this.objects.get(id)?.view
-        return object ? [object] : []
-      })
-      if (targets.length > 1) canvas.setActiveObject(new ActiveSelection(targets, { canvas, hasControls: false }))
-      else if (targets[0] && targets[0] !== canvas.getActiveObject()) canvas.setActiveObject(targets[0])
-      this.events.selection(this.selectedIds())
-      canvas.requestRenderAll()
+      this.applySelection(selected)
     } finally {
       this.syncing = false
     }
@@ -393,6 +465,7 @@ export class FabricSurface {
   }
 
   dispose() {
+    this.listeners.abort()
     this.resize.disconnect()
     void this.canvas.dispose()
   }

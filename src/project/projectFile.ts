@@ -1,7 +1,23 @@
 import { hasExactKeys, isCanvasObject, isDataRecord, isNonBlankString, type CanvasObject, type CanvasScene } from '../core/scene'
 
 const format = 'document-vector-canvas'
-const version = 1
+const version = 2
+
+// Keep the legacy field allowlist here when the live scene gains v2-only features.
+const v1Common = ['id', 'type', 'x', 'y', 'rotation']
+const v1Box = ['width', 'height', 'fill', 'stroke', 'strokeWidth']
+const v1Segment = ['dx', 'dy', 'stroke', 'strokeWidth']
+const v1Fields = {
+  rectangle: v1Box, ellipse: v1Box, line: v1Segment, arrow: v1Segment,
+  stroke: ['points', 'stroke', 'strokeWidth'], text: ['text', 'fontFamily', 'fontSize', 'color'],
+}
+
+function isV1Object(object: unknown): object is CanvasObject {
+  if (!isDataRecord(object) || typeof object.type !== 'string' || !Object.hasOwn(v1Fields, object.type)) return false
+  const fields = [...v1Common, ...v1Fields[object.type as keyof typeof v1Fields]]
+  if (object.type !== 'text' && Object.hasOwn(object, 'strokeStyle')) fields.push('strokeStyle')
+  return hasExactKeys(object, fields) && isCanvasObject(object)
+}
 
 const messages = {
   'invalid-json': '项目文件不是有效的 JSON。',
@@ -32,7 +48,7 @@ export function decodeProject(source: string): ProjectFileResult {
   }
 
   if (!isDataRecord(data) || data.format !== format) return fail('unsupported-format')
-  if (data.version !== version) return fail('unsupported-version')
+  if (data.version !== 1 && data.version !== version) return fail('unsupported-version')
   if (!hasExactKeys(data, ['format', 'version', 'scene'])) return fail('invalid-scene')
   const scene = data.scene
   if (!isDataRecord(scene) || !hasExactKeys(scene, ['id', 'objects']) ||
@@ -40,8 +56,9 @@ export function decodeProject(source: string): ProjectFileResult {
 
   const seen = new Set<string>()
   const objects: CanvasObject[] = []
+  const validateObject = data.version === 1 ? isV1Object : isCanvasObject
   for (const object of scene.objects) {
-    if (!isCanvasObject(object)) return fail('invalid-object')
+    if (!validateObject(object)) return fail('invalid-object')
     if (seen.has(object.id)) return fail('duplicate-object')
     seen.add(object.id)
     objects.push(object)

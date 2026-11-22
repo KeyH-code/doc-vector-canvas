@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import type { CanvasScene } from '../../src/core/scene'
 import { encodeProject } from '../../src/project/projectFile'
+import { initialScenePoint } from './initial-scene-point'
 
 const scene: CanvasScene = {
   id: 'svg-acceptance',
@@ -43,26 +44,20 @@ test('正式页面只下载选区，50% 和 200% 的 SVG 一致且内容无裁�
   await openScene(page, scene)
   await expect(exportButton).toBeDisabled()
 
-  async function useSceneScale(scale: number) {
-    // Size the real canvas host so ResizeObserver applies the requested Fabric viewport scale.
-    await page.locator('.sheet').evaluate((sheet: HTMLElement, width) => { sheet.style.width = `${width + 2}px` }, scale * 1000)
-    await expect(paint(page)).toHaveCSS('width', `${scale * 1000}px`)
-    const height = Number.parseFloat(await paint(page).evaluate((el: HTMLCanvasElement) => el.style.height))
-    expect(height / (1000 * 450 / 760)).toBeCloseTo(scale, 2)
-  }
-
-  await useSceneScale(.5)
-  const bounds = (await paint(page).boundingBox())!
+  const zoom = page.getByRole('combobox', { name: '画布缩放' })
+  await zoom.selectOption('0.5')
+  await expect(zoom).toHaveValue('0.5')
   for (const object of [...scene.objects.slice(0, 3)].reverse()) {
     if (object.id !== 'caption') await page.keyboard.down('Shift')
-    await page.mouse.click(bounds.x + object.x / 2, bounds.y + object.y / 2)
+    const point = await initialScenePoint(page, object.x, object.y)
+    await page.mouse.click(point.x, point.y)
     await page.keyboard.up('Shift')
   }
   await expect(page.getByRole('status')).toHaveText('已选中 3 个对象')
   await expect(exportButton).toBeEnabled()
   const half = await downloadSvg(page)
-  await page.setViewportSize({ width: 2500, height: 1500 })
-  await useSceneScale(2)
+  await zoom.selectOption('2')
+  await expect(zoom).toHaveValue('2')
   expect((await downloadSvg(page)).markup).toBe(half.markup)
   await expect(page.getByRole('status')).toHaveText('已选中 3 个对象')
   await expect(fileAction(page, '撤销')).toBeDisabled()
@@ -114,9 +109,8 @@ test('正式页面只下载选区，50% 和 200% 的 SVG 一致且内容无裁�
 test('导出当前字号预览，但不提交编辑，也不清除重做分支', async ({ page }) => {
   await page.goto('/')
   await openScene(page, scene)
-  const box = (await paint(page).boundingBox())!
-  const scale = Math.floor(box.width) / 1000
-  await page.mouse.click(box.x + 342 * scale, box.y + 365 * scale)
+  const point = await initialScenePoint(page, 342, 365)
+  await page.mouse.click(point.x, point.y)
   const size = page.getByLabel('字号', { exact: true })
   await size.fill('42')
   await size.press('Tab')
@@ -137,9 +131,8 @@ test('单独导出文字时，超出排版宽度的组合附标没有被裁掉',
   const text = { type: 'text', id: 'overhang', x: 400, y: 280, rotation: 0, text: 'A\u3099',
     fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 120, color: '#343e4e' } as const
   await openScene(page, { id: 'text-only', objects: [text] })
-  const box = (await paint(page).boundingBox())!
-  const scale = Math.floor(box.width) / 1000
-  await page.mouse.click(box.x + text.x * scale, box.y + text.y * scale)
+  const point = await initialScenePoint(page, text.x, text.y)
+  await page.mouse.click(point.x, point.y)
   const { markup } = await downloadSvg(page)
   const result = await page.evaluate(async source => {
     const svg = new DOMParser().parseFromString(source, 'image/svg+xml').documentElement

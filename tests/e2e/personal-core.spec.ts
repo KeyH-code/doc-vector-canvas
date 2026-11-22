@@ -127,14 +127,14 @@ test('实际下载后在新会话重开，继续编辑只改原文字内容', as
   await page.keyboard.insertText('帧数增加 & 预算不变\n继续编辑')
   // 保存会结束已确认的文字编辑，不要求先点击空白处。
   const saved = await downloadProject(page)
-  expect(JSON.parse(saved.file.buffer.toString('utf8'))).toEqual({ format: 'document-vector-canvas', version: 1, scene: saved.scene })
+  expect(JSON.parse(saved.file.buffer.toString('utf8'))).toEqual({ format: 'document-vector-canvas', version: 2, scene: saved.scene })
   const [rectangle, text] = saved.scene.objects
   expect(rectangle).toMatchObject({ type: 'rectangle', rotation: 0 })
   expect(rectangle.x).toBeGreaterThan(550)
   if (rectangle.type !== 'rectangle') throw new Error('缺少矩形')
   expect(rectangle.width).toBeGreaterThan(310)
   expect(text).toMatchObject({ type: 'text', text: '帧数增加 & 预算不变\n继续编辑' })
-  await saved.download.saveAs(testInfo.outputPath('personal-v1.json'))
+  await saved.download.saveAs(testInfo.outputPath('personal-v2.json'))
 
   const fresh = await browser.newContext()
   try {
@@ -150,10 +150,20 @@ test('实际下载后在新会话重开，继续编辑只改原文字内容', as
     await reopened.keyboard.insertText('重开后修改')
     const modified = await downloadProject(reopened)
     expect(modified.scene).toEqual({ id: saved.scene.id, objects: [rectangle, { ...text, text: '重开后修改' }] })
-    await modified.download.saveAs(testInfo.outputPath('personal-reopened-v1.json'))
+    await modified.download.saveAs(testInfo.outputPath('personal-reopened-v2.json'))
   } finally {
     await fresh.close()
   }
+})
+
+test('在正式页面打开 C3 下载件并无损保存为 v2', async ({ page }) => {
+  await page.goto('/')
+  const legacy = await readFile(new URL('../fixtures/projects/personal-v1.json', import.meta.url))
+  await openFile(page, { name: 'C3项目.json', mimeType: 'application/json', buffer: legacy })
+  await expect(sidebar(page).getByText('6 个对象', { exact: true })).toBeVisible()
+  await expect(tool(page, '撤销')).toBeDisabled()
+  const saved = await downloadProject(page)
+  expect(JSON.parse(saved.file.buffer.toString('utf8'))).toEqual({ ...JSON.parse(legacy.toString('utf8')), version: 2 })
 })
 
 test('坏文件和取消打开保留画布与历史，成功打开才重置历史', async ({ page }) => {
@@ -283,17 +293,19 @@ test('异步打开期间尚未完成的旧拖拽不能写入新项目', async ({
   expect((await downloadProject(page)).scene).toEqual({ id: 'new-session', objects: [] })
 })
 
-test('矩形拖到纸外后仍能重开并在纸上选中', async ({ page }) => {
+test('矩形拖出窗口后仍能重开并通过回到内容找回', async ({ page }) => {
   await page.goto('/')
   await tool(page, '矩形').click()
   await drag(page, [.20, .22], [.40, .40])
   await drag(page, [.30, .31], [-.35, .31])
   const saved = await downloadProject(page)
+  expect(saved.scene.objects[0].x).toBeLessThan(0)
   await page.reload()
   await openFile(page, saved.file)
   await expect(sidebar(page).getByText('1 个对象', { exact: true })).toBeVisible()
-  await expect.poll(() => alphaAt(page, .02, .31)).toBe(255)
-  await clickAt(page, .02, .31)
+  await tool(page, '回到内容').click()
+  await expect.poll(() => alphaAt(page, .5, .5)).toBe(255)
+  await clickAt(page, .5, .5)
   await expect(page.getByRole('status')).toHaveText('已选中 1 个矩形')
 })
 

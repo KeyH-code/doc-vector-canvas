@@ -6,8 +6,8 @@ import { selectionSvg } from '../export/selectionSvg'
 import { downloadLocalFile, downloadLocalProject, readLocalProject } from '../project/localFiles'
 import { encodeProject } from '../project/projectFile'
 import { createProjectSession, isProjectDirty, markProjectSaved, openProject, type ProjectSession } from '../project/projectSession'
-import { editingShortcut } from '../ui/shortcuts'
-import { FabricSurface, paperHeight, paperWidth, type Tool } from './FabricSurface'
+import { editingShortcut, isTemporaryHandKey } from '../ui/shortcuts'
+import { FabricSurface, type Tool } from './FabricSurface'
 
 const untitled = '未命名项目'
 const discardMessage = '当前项目有未保存的改动。是否放弃改动并继续？'
@@ -16,7 +16,9 @@ type PropertyPreview = { id: string; changes: ObjectChanges }
 export function useEditor(theme: 'light' | 'dark') {
   const [session, setSession] = useState(() => createProjectSession(crypto.randomUUID()))
   const sessionRef = useRef(session)
-  const [tool, setTool] = useState<Tool>('select')
+  const [tool, updateTool] = useState<Tool>('select')
+  const [hand, setHand] = useState(false)
+  const [zoom, setZoom] = useState(1)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [clipboard, setClipboard] = useState<readonly CanvasObject[]>([])
   const [editing, setEditing] = useState(false)
@@ -70,8 +72,9 @@ export function useEditor(theme: 'light' | 'dark') {
         if (ids.length !== 1 || ids[0] !== propertyPreview.current?.id) finishPropertyPreview()
         setSelectedIds(ids)
       },
-      tool: setTool,
+      tool: updateTool,
       editing: setEditing,
+      zoom: setZoom,
     })
     surface.current = editor
     return () => { surface.current = null; editor.dispose() }
@@ -89,6 +92,32 @@ export function useEditor(theme: 'light' | 'dark') {
     surface.current!.setSelectionColors(colors.getPropertyValue('--selection').trim(), colors.getPropertyValue('--sheet').trim())
   }, [scene, theme])
   useLayoutEffect(() => { surface.current!.setTool(tool) }, [tool])
+  useLayoutEffect(() => { surface.current!.setHand(hand) }, [hand])
+
+  function setTool(next: Tool) {
+    setHand(false)
+    updateTool(next)
+  }
+
+  function toggleHand() {
+    if (editing) return
+    updateTool('select')
+    setHand(active => !active)
+  }
+
+  function selectFromNavigator(ids: readonly string[], extend: boolean) {
+    finishPropertyPreview()
+    const view = surface.current
+    view?.finishEditing()
+    setTool('select')
+    view?.setTool('select')
+    view?.selectFromNavigator(ids, extend)
+  }
+
+  function locateFromNavigator(id: string) {
+    selectFromNavigator([id], false)
+    surface.current?.fitContent(id)
+  }
 
   function travel(step: typeof undo) {
     finishPropertyPreview()
@@ -102,6 +131,8 @@ export function useEditor(theme: 'light' | 'dark') {
     if ((isProjectDirty(sessionRef.current) || surface.current?.hasPendingText() || hasPendingProperties()) && !window.confirm(discardMessage)) return
     propertyPreview.current = undefined
     surface.current?.resetInteraction()
+    surface.current?.resetViewport()
+    setHand(false)
     publish(createProjectSession(crypto.randomUUID()))
     setProjectName(untitled)
     setNotice(undefined)
@@ -144,6 +175,8 @@ export function useEditor(theme: 'light' | 'dark') {
       if (result.status !== 'opened') return
       propertyPreview.current = undefined
       surface.current?.resetInteraction()
+      surface.current?.resetViewport()
+      setHand(false)
       publish(result.session)
       setProjectName(file.name.replace(/\.json$/i, '') || untitled)
       setNotice(undefined)
@@ -183,9 +216,7 @@ export function useEditor(theme: 'light' | 'dark') {
   function paste() {
     if (!clipboard.length) return
     finishPropertyPreview()
-    const dx = pasteOffset(clipboard, 'x', paperWidth)
-    const dy = pasteOffset(clipboard, 'y', paperHeight)
-    const copies = clipboard.map(object => ({ ...object, id: crypto.randomUUID(), x: object.x + dx, y: object.y + dy }))
+    const copies = clipboard.map(object => ({ ...object, id: crypto.randomUUID(), x: object.x + 24, y: object.y + 24 }))
     setTool('select')
     commit(copies.map(object => ({ type: 'create', object })), copies.map(object => object.id))
   }
@@ -203,6 +234,11 @@ export function useEditor(theme: 'light' | 'dark') {
   useLayoutEffect(() => {
     function handleKey(event: KeyboardEvent) {
       if (editing || surface.current?.isComposing()) return
+      if (isTemporaryHandKey(event)) {
+        event.preventDefault()
+        surface.current?.setHand(true, true)
+        return
+      }
       const shortcut = editingShortcut(event)
       if (!shortcut) return
       const action = {
@@ -220,16 +256,18 @@ export function useEditor(theme: 'light' | 'dark') {
     return () => window.removeEventListener('keydown', handleKey)
   })
 
+  useLayoutEffect(() => {
+    const release = () => surface.current?.setHand(false, true)
+    const keyup = (event: KeyboardEvent) => { if (event.code === 'Space') release() }
+    window.addEventListener('keyup', keyup)
+    window.addEventListener('blur', release)
+    return () => { window.removeEventListener('keyup', keyup); window.removeEventListener('blur', release) }
+  }, [])
+
   return { scene, tool, setTool, selected, editing, canvas, host, canUndo, canRedo, canPaste: clipboard.length > 0,
     undo: () => travel(undo), redo: () => travel(redo), copy, paste, remove, previewProperties, finishPropertyPreview, updateProperties,
     projectName, notice, reading, newProject, saveProject, openLocalProject, exportSelection,
+    hand, zoom, toggleHand, zoomTo: (zoom: number) => surface.current?.setZoom(zoom), fitContent: () => surface.current?.fitContent(),
+    selectFromNavigator, locateFromNavigator,
     hasPendingProperties, isComposing: () => surface.current?.isComposing() ?? false }
-}
-
-function pasteOffset(objects: readonly CanvasObject[], axis: 'x' | 'y', size: number) {
-  let min = Infinity, max = -Infinity
-  for (const object of objects) {
-    min = Math.min(min, object[axis]); max = Math.max(max, object[axis])
-  }
-  return max + 24 <= size ? 24 : min >= 24 ? -24 : 0
 }

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { decodeProject, encodeProject } from '../../src/project/projectFile'
 import type { CanvasObject, LineObject, RectangleObject } from '../../src/core/scene'
+import { initialScenePoint as xy } from './initial-scene-point'
 
 const button = (page: Page, name: string) => page.getByRole('button', { name, exact: true })
 const field = (page: Page, name: string) => page.getByLabel(name, { exact: true })
@@ -27,12 +28,6 @@ async function saved(page: Page) {
   const project = decodeProject(source)
   if (!project.ok) throw new Error(project.message)
   return project.scene.objects
-}
-
-async function xy(page: Page, x: number, y: number) {
-  const box = (await stage(page).boundingBox())!
-  const scale = Math.min(Math.floor(box.width) / 1000, Math.floor(box.height) / (1000 * 450 / 760))
-  return { x: box.x + x * scale, y: box.y + y * scale }
 }
 
 async function click(page: Page, x: number, y: number, twice = false) {

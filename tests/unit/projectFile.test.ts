@@ -1,20 +1,35 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { decodeProject, encodeProject } from '../../src/project/projectFile'
 import { rectangle, text } from './fixtures/scenes'
 
 const scene = { id: 'personal', objects: [{ ...rectangle(), rotation: 31 }, text(), rectangle('third')] }
 const envelope = (nextScene: unknown) => JSON.stringify({ format: 'document-vector-canvas', version: 1, scene: nextScene })
+const c3Download = readFileSync(new URL('../fixtures/projects/personal-v1.json', import.meta.url), 'utf8')
 
 describe('Personal Mode 项目文件', () => {
   it('完整往返保留稳定 ID、绘制顺序、几何、样式和多行中文', () => {
     const encoded = encodeProject(scene)
-    expect(JSON.parse(encoded)).toEqual({ format: 'document-vector-canvas', version: 1, scene })
+    expect(JSON.parse(encoded)).toEqual({ format: 'document-vector-canvas', version: 2, scene })
     expect(decodeProject(encoded)).toEqual({ ok: true, scene })
   })
 
   it('不写入画布视口、预览、历史等会话字段', () => {
     const enriched = { ...scene, viewport: { zoom: 2 }, history: [{}], selectedIds: ['rect-b'] }
-    expect(JSON.parse(encodeProject(enriched))).toEqual({ format: 'document-vector-canvas', version: 1, scene })
+    expect(JSON.parse(encodeProject(enriched))).toEqual({ format: 'document-vector-canvas', version: 2, scene })
+  })
+
+  it('C3 实际下载的 v1 项目无损打开，再保存时写为 v2', () => {
+    const original = JSON.parse(c3Download)
+    expect(original.version).toBe(1)
+    const migrated = decodeProject(c3Download)
+    if (!migrated.ok) throw new Error(migrated.message)
+    expect(migrated.scene).toEqual(original.scene)
+    expect(migrated.scene.objects[0]).toMatchObject({ type: 'rectangle', strokeStyle: 'dashed' })
+    expect(migrated.scene.objects.at(-1)).toMatchObject({ type: 'text', text: '帧数与预算 & 对照\n第二行中文' })
+    const next = encodeProject(migrated.scene)
+    expect(JSON.parse(next)).toEqual({ ...original, version: 2 })
+    expect(decodeProject(next)).toEqual(migrated)
   })
 
   it('新图元与既有矩形、文字共用项目文件，保留方向和局部笔迹点', () => {
@@ -33,6 +48,7 @@ describe('Personal Mode 项目文件', () => {
     ['null', 'unsupported-format'],
     [JSON.stringify({ format: 'fabric-spike', version: 1, scene }), 'unsupported-format'],
     [JSON.stringify({ format: 'document-vector-canvas', version: 42, scene }), 'unsupported-version'],
+    [JSON.stringify({ format: 'document-vector-canvas', version: 2, scene: { ...scene, objects: [{ ...rectangle(), attachment: {} }] } }), 'invalid-object'],
     [envelope({ ...scene, id: '' }), 'invalid-scene'],
     [envelope({ ...scene, objects: null }), 'invalid-scene'],
     [envelope({ ...scene, objects: [rectangle(), { ...text(), id: 'rect-b' }] }), 'duplicate-object'],

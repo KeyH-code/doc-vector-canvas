@@ -1,23 +1,27 @@
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useEditor } from './editor/useEditor'
 import { FileMenu } from './ui/FileMenu'
 import { Icon } from './ui/Icon'
+import { ObjectNavigator, objectKinds } from './ui/ObjectNavigator'
 import { PropertiesPanel } from './ui/PropertiesPanel'
 import { Toolbar } from './ui/Toolbar'
-
-const objectKinds = {
-  rectangle: { label: '矩形', icon: 'rect' },
-  ellipse: { label: '椭圆', icon: 'ellipse' },
-  line: { label: '直线', icon: 'line' },
-  arrow: { label: '箭头', icon: 'arrow' },
-  stroke: { label: '笔迹', icon: 'pen' },
-  text: { label: '文字', icon: 'text' },
-} as const
+import { ViewportControls, WorkspaceDivider } from './ui/ViewportControls'
 
 export function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light')
   const [expanded, setExpanded] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(240)
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+  const root = useRef<HTMLElement>(null)
   useLayoutEffect(() => { document.documentElement.dataset.theme = theme }, [theme])
+  useLayoutEffect(() => {
+    const observe = new ResizeObserver(([entry]) => setWindowWidth(Math.floor(entry.contentRect.width)))
+    observe.observe(root.current!)
+    return () => observe.disconnect()
+  }, [])
+  const minSidebar = windowWidth < 800 ? 184 : 200
+  const maxSidebar = Math.max(minSidebar, Math.min(480, windowWidth - 280))
+  const shownSidebar = Math.min(maxSidebar, Math.max(minSidebar, sidebarWidth))
   const editor = useEditor(theme)
   const { scene, tool, selected, editing } = editor
   const single = selected.length === 1 ? selected[0] : undefined
@@ -26,6 +30,7 @@ export function App() {
   const status = editing ? '正在编辑文字' : single ? `已选中 1 个${objectKinds[single.type].label}`
     : selected.length ? `已选中 ${selected.length} 个对象` : `${size} 个对象`
   const hint = editing ? '在画布上输入文字 · 点击空白结束编辑'
+    : editor.hand ? '按住拖动画布，只移动视图'
     : tool === 'text' ? '点击画布添加文字' : tool === 'stroke' ? '按住拖动绘制 · 松手可继续下一笔'
     : tool !== 'select' ? `在画布上拖出${objectKinds[tool].label}`
     : single?.type === 'text' ? '拖动文字移动 · 双击编辑'
@@ -33,7 +38,8 @@ export function App() {
     : selected.length ? '拖动可整体移动 · Shift 可调整选区' : '先选一个绘图工具'
 
   return (
-    <main className="editor" data-sidebar={expanded ? 'expanded' : 'collapsed'} onMouseDownCapture={event => {
+    <main ref={root} className="editor" data-sidebar={expanded ? 'expanded' : 'collapsed'}
+      style={expanded ? { gridTemplateColumns: `${shownSidebar}px 8px minmax(0, 1fr)` } : undefined} onMouseDownCapture={event => {
       if (!(event.target instanceof Element)) return
       // Keep the IME focused until the clicked action decides whether to end the edit.
       if (editor.isComposing() && event.target.closest('button')) event.preventDefault()
@@ -53,21 +59,10 @@ export function App() {
             <FileMenu busy={editor.reading} canExport={selected.length > 0 && !editing}
               onSave={editor.saveProject} onNew={editor.newProject} onOpen={editor.openLocalProject} onExport={editor.exportSelection} />
           </section>
-          <section aria-labelledby="content-heading">
-            <div className="object-head"><h2 id="content-heading">项目内容</h2><span>{size} 个对象</span></div>
-            <div className="canvas-entry"><Icon name="page" />当前画布</div>
-            {size === 0 ? <p className="object-empty">暂无对象</p> : (
-              <ul className="object-list" aria-label="画布对象">
-                {scene.objects.map(object => (
-                  <li key={object.id} className={selectedIds.has(object.id) ? 'object-row active' : 'object-row'}>
-                    <Icon name={objectKinds[object.type].icon} />
-                    <span>{objectKinds[object.type].label}</span>
-                    {selectedIds.has(object.id) && <small>{editing ? '编辑中' : '已选中'}</small>}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <div className="sidebar-scroll">
+            <ObjectNavigator key={scene.id} objects={scene.objects} selected={selectedIds} editing={editing}
+              onSelect={editor.selectFromNavigator} onLocate={editor.locateFromNavigator} />
+          </div>
           {single && !editing && <PropertiesPanel key={single.id} object={single}
             onChange={changes => editor.updateProperties(single.id, changes)}
             onPreview={changes => editor.previewProperties(single.id, changes)}
@@ -78,10 +73,12 @@ export function App() {
           </div>
         </div>
       </aside>
+      {expanded && <WorkspaceDivider width={shownSidebar} min={minSidebar} max={maxSidebar} onWidth={setSidebarWidth} />}
       <section className="workspace" aria-label="画布工作区">
         <div className="space">
           <div className="stage-head">
-            <Toolbar tool={tool} onTool={editor.setTool} onUndo={editor.undo} onRedo={editor.redo}
+            <Toolbar tool={tool} hand={editor.hand} editing={editing} onTool={editor.setTool} onHand={editor.toggleHand}
+              onUndo={editor.undo} onRedo={editor.redo}
               canUndo={editor.canUndo} canRedo={editor.canRedo} />
             {editor.notice && <div className="notice" role="alert">
               <Icon name="notice" /><span><b>{editor.notice.title}</b> {editor.notice.message}</span>
@@ -105,7 +102,7 @@ export function App() {
             <button type="button" disabled={editing || !editor.canPaste} onClick={editor.paste}>粘贴</button>
             <button type="button" disabled={editing || !selected.length} onClick={editor.remove}>删除</button>
           </div>
-          <span>Personal Mode · 本地项目</span>
+          <ViewportControls editor={root} editing={editing} zoom={editor.zoom} onZoom={editor.zoomTo} onFit={editor.fitContent} />
         </footer>
       </section>
     </main>
