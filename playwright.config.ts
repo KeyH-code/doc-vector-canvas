@@ -13,7 +13,7 @@ export default defineConfig({
   },
   webServer: {
     command: process.platform === 'win32' ? 'npm.cmd run dev' : 'npm run dev',
-    url: `${origin}/spike.html`,
+    url: origin,
     reuseExistingServer: false,
   },
 })

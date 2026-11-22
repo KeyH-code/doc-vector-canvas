@@ -1,6 +1,6 @@
 # 第一阶段实施计划：Personal Mode
 
-> **状态：** 2026-11-20 计划审核通过。A 批小样、自动化和 PowerPoint 检查已执行；参赛者实测确认真实中文输入能正常显示，候选取消及提交次数留到 B3 验收，见 [A 批验证记录](../../research/personal-mode-engine-spike.md)。B 批获准开工，正式页面仍须先通过预览审核。
+> **状态：** A 批引擎选型及 B 批最小闭环通过；B3a v4.2 获批，B3b 原生中文输入法及文件选择的人工检查由参赛者确认通过，见 [A 批验证记录](../../research/personal-mode-engine-spike.md) 与 [B 批验收记录](b-validation-results.md)。参赛者已同意继续 C 批。
 
 **目标（Goal）：** 交付能独立完成绘制、编辑、保存重开和选区 SVG 导出的 Personal Mode，并让后续 Agent 可以复用按 ID 操作图元的入口。
 
@@ -107,6 +107,8 @@ function applyAtomically<S, C>(
 
 ### C1. 新增直线、椭圆、画笔和箭头（P-01、P-04、P-08）
 
+**进展：** 四种工具已接入正式页面。Chrome 浏览器用例验证反向椭圆、有向直线和箭头、连续笔迹、零长度不产生历史、单笔撤销及下载重开后依然能点选；全量 51 项单测、21 项浏览器测试、类型检查和构建通过。参赛者确认 C1 验收通过，同意继续 C2。
+
 **文件：** `src/core/scene.ts`、`src/core/geometry.ts`、`src/editor/FabricSurface.ts`、`src/ui/Toolbar.tsx`、`src/project/projectFile.ts`、`tests/unit/geometry.test.ts`、`tests/unit/projectFile.test.ts`、`tests/e2e/drawing-tools.spec.ts`。
 
 1. 先测反向拖动、零长度不提交、箭头保留有向端点、每笔单独保存、重开后可选择。矩形/椭圆的边界由起止点规范化；直线和箭头保留方向；自由笔迹保存项目定义的局部点或路径数据，不保存 Fabric 对象或原样 SVG 片段。
@@ -114,6 +116,8 @@ function applyAtomically<S, C>(
 3. 运行 `npm.cmd run test:unit` 和 `npm.cmd run test:e2e -- drawing-tools.spec.ts`，预期全部图形可画、可选、可重开。建议提交 `feat: add vector drawing tools`。
 
 ### C2. 编辑、样式、剪贴板与快捷键（P-02、P-03、P-04、P-06、P-08、P-09）
+
+**进展：** 已实现单选移动/缩放/旋转、框选与 Shift 多选整体移动、应用内复制粘贴/删除、按类型展示的属性与编辑快捷键。按参赛者反馈，字号、颜色和线宽改为即时预览，结束编辑时只提交一步；直接保存会使用最新有效值。验证结果：53 项单测、31 项 Chrome 浏览器测试、类型检查与生产构建通过；Edge 在 `1280×800`、`1440×900` 复查亮暗主题下的属性面板，无横向溢出或底栏截断。参赛者确认微软雅黑和宋体字形有明显区别，C2 测试通过，同意进入 C3。
 
 **文件：** `src/core/commands.ts`、`src/core/history.ts`、`src/editor/FabricSurface.ts`、`src/editor/useEditor.ts`、`src/ui/PropertiesPanel.tsx`、`src/ui/Toolbar.tsx`、`src/ui/shortcuts.ts`、`tests/unit/commands.test.ts`、`tests/e2e/object-editing.spec.ts`。
 

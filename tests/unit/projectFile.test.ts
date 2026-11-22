@@ -17,6 +17,17 @@ describe('Personal Mode 项目文件', () => {
     expect(JSON.parse(encodeProject(enriched))).toEqual({ format: 'document-vector-canvas', version: 1, scene })
   })
 
+  it('新图元与既有矩形、文字共用项目文件，保留方向和局部笔迹点', () => {
+    const style = { x: 90, y: 120, rotation: 0, stroke: '#355985', strokeWidth: 3 }
+    const source = { id: 'drawing', objects: [rectangle(), text(),
+      { ...rectangle('oval'), type: 'ellipse' },
+      { ...style, id: 'line', type: 'line', dx: 0, dy: 30 },
+      { ...style, id: 'arrow', type: 'arrow', dx: -48, dy: 10 },
+      { ...style, id: 'stroke', type: 'stroke', points: [{ x: -5, y: 2 }, { x: 5, y: -2 }] },
+    ] }
+    expect(decodeProject(envelope(source))).toEqual({ ok: true, scene: source })
+  })
+
   it.each([
     ['{不完整', 'invalid-json'],
     ['null', 'unsupported-format'],
@@ -25,7 +36,9 @@ describe('Personal Mode 项目文件', () => {
     [envelope({ ...scene, id: '' }), 'invalid-scene'],
     [envelope({ ...scene, objects: null }), 'invalid-scene'],
     [envelope({ ...scene, objects: [rectangle(), { ...text(), id: 'rect-b' }] }), 'duplicate-object'],
-    [envelope({ ...scene, objects: [{ ...rectangle(), type: 'ellipse' }] }), 'invalid-object'],
+    [envelope({ ...scene, objects: [{ ...rectangle(), type: 'unknown' }] }), 'invalid-object'],
+    [envelope({ ...scene, objects: [{ id: 'arrow', type: 'arrow', x: 0, y: 0, rotation: 0, stroke: '#355985', strokeWidth: 2, dx: 0, dy: 0 }] }), 'invalid-object'],
+    [envelope({ ...scene, objects: [{ id: 'stroke', type: 'stroke', x: 0, y: 0, rotation: 0, stroke: '#355985', strokeWidth: 2, points: [{ x: 0, y: 0 }, { x: 'bad', y: 1 }] }] }), 'invalid-object'],
     [envelope({ ...scene, objects: [{ ...rectangle(), width: 0 }] }), 'invalid-object'],
     [envelope({ ...scene, objects: [{ ...rectangle(), y: '100' }] }), 'invalid-object'],
     [envelope({ ...scene, objects: [{ ...rectangle(), x: null }] }).replace('"x":null', '"x":1e999'), 'invalid-object'],

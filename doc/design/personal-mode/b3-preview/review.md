@@ -1,6 +1,6 @@
 # B3a 页面预览 · v4.2
 
-**状态：v4.2 视觉审核通过，作为 B3b 初版基准；B3b 实现尚未开始。** [v4.2 侧栏布局](layout-sidebar.html) · [v3 顶部布局对照](index.html) · [B 批计划](../../../plans/personal-mode/2026-11-20-personal-mode-b.md)
+**状态：v4.2 视觉审核通过，作为 B3b 初版基准。** [v4.2 侧栏布局](layout-sidebar.html) · [v3 顶部布局对照](index.html) · [B 批计划](../../../plans/personal-mode/2026-11-20-personal-mode-b.md) · [正式页面验收进展](../../../plans/personal-mode/b-validation-results.md)
 
 ## v4.2 · 共用边框的项目操作栏
 

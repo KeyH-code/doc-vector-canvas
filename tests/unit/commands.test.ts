@@ -101,4 +101,24 @@ describe('画布命令', () => {
     })
     expect(result).toMatchObject({ ok: true, scene: { objects: [...scopedScene().objects, rectangle('new')] } })
   })
+
+  it('按 ID 复制并删除能原子执行，复制保留样式但使用新 ID', () => {
+    const scene = scopedScene()
+    const result = applyCommands(scene, [
+      { type: 'duplicate', id: 'rect-b', newId: 'copy', x: 144, y: 106 },
+      { type: 'delete', id: 'text-a' },
+    ], { ...scope, allowCreate: true })
+    expect(result).toEqual({ ok: true, scene: { id: 'personal', objects: [rectangle(), rectangle('rect-c'), { ...rectangle('copy'), x: 144, y: 106 }] } })
+  })
+
+  it('直接删除或复制非授权对象会使整批失败，复制还须有创建权限', () => {
+    const scene = scopedScene()
+    const valid = { type: 'delete', id: 'text-a' } as const
+    expect(applyCommands(scene, [valid, { type: 'delete', id: 'rect-c' }], scope)).toEqual({ ok: false, code: 'out-of-scope', index: 1 })
+    expect(applyCommands(scene, [valid, { type: 'duplicate', id: 'rect-c', newId: 'copy' }], { ...scope, allowCreate: true }))
+      .toEqual({ ok: false, code: 'out-of-scope', index: 1 })
+    expect(applyCommands(scene, [{ type: 'duplicate', id: 'rect-b', newId: 'copy' }], scope)).toMatchObject({ ok: false, code: 'out-of-scope' })
+    expect(applyCommands(scene, [{ type: 'duplicate', id: 'rect-b', newId: 'rect-c' }], { ...scope, allowCreate: true }))
+      .toMatchObject({ ok: false, code: 'duplicate-object' })
+  })
 })
