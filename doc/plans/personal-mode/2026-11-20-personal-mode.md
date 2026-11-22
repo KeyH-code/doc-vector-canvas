@@ -135,6 +135,10 @@ function applyAtomically<S, C>(
 2. 用选定对象在新渲染表面重建导出，不临时删除真实画布上的未选对象。计算包含变换和描边的安全边界，按绘制顺序输出；不纳入参考背景、控制点或画布视口。若 Fabric 的边界与 PPT 表现不满足验收，只调整输出实现，不更改项目模型或丢弃可编辑文件能力。
 3. 执行 `npm.cmd run test:unit -- tests/unit/selectionSvg.test.ts`、`npm.cmd run test:e2e -- selection-export.spec.ts`，再试在目标 PPT 插入。建议提交 `feat: export selected objects as svg`；提交不代表 PPT 已验收，结果单独记录。
 
+## C3 后、D 前：画布扩展
+
+2026-11-22，参赛者批准[画布扩展实施计划](2026-11-22-personal-mode-expansion.md)。按无限画布与对象目录、新增图形与显式连接、图片表格与 Agent 前置验证三批执行，各自审核；扩展通过后再进入 D。此轮不接入实际 Agent 或文档导入。
+
 ## D：收齐可复现的交付证据
 
 ### D1. 写使用文档、原创示例与实际验证记录（P-10）
