@@ -34,8 +34,11 @@ export function App() {
 
   return (
     <main className="editor" data-sidebar={expanded ? 'expanded' : 'collapsed'} onMouseDownCapture={event => {
+      if (!(event.target instanceof Element)) return
       // Keep the IME focused until the clicked action decides whether to end the edit.
-      if (editor.isComposing() && event.target instanceof Element && event.target.closest('button')) event.preventDefault()
+      if (editor.isComposing() && event.target.closest('button')) event.preventDefault()
+      // Export can read a property preview without blurring and committing its input.
+      if (editor.hasPendingProperties() && event.target.closest('.export-action')) event.preventDefault()
     }}>
       <aside className="sidebar" aria-label="项目侧栏">
         <div className="sidebar-head">
@@ -47,7 +50,8 @@ export function App() {
         <div className="sidebar-inner" id="sidebar-content" hidden={!expanded}>
           <section className="file-panel" aria-label="项目操作">
             <b className="file-name">{editor.projectName}</b>
-            <FileMenu busy={editor.reading} onSave={editor.saveProject} onNew={editor.newProject} onOpen={editor.openLocalProject} />
+            <FileMenu busy={editor.reading} canExport={selected.length > 0 && !editing}
+              onSave={editor.saveProject} onNew={editor.newProject} onOpen={editor.openLocalProject} onExport={editor.exportSelection} />
           </section>
           <section aria-labelledby="content-heading">
             <div className="object-head"><h2 id="content-heading">项目内容</h2><span>{size} 个对象</span></div>

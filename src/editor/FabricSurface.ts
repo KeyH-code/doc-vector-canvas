@@ -1,52 +1,16 @@
 import { ActiveSelection, Canvas, Ellipse, IText, Point, Polyline, Rect, type FabricObject } from 'fabric'
 import type { ObjectChanges, SceneCommand } from '../core/commands'
-import { drawingGeometry, strokePoints, type DrawingType, type ScenePoint } from '../core/geometry'
+import { drawingGeometry, type DrawingType, type ScenePoint } from '../core/geometry'
 import { isCanvasObject, type CanvasObject, type CanvasScene, type TextObject } from '../core/scene'
+import { applySceneObject, makeSceneObject, makeShape, paintObject, paintShape, pathOffset, type Shape, type ShapeView } from './fabricObjects'
 
 export type Tool = 'select' | 'text' | DrawingType
-type Shape = Exclude<CanvasObject, TextObject>
-type ShapeView = Rect | Ellipse | Polyline
 
 export const paperWidth = 1000
 export const paperHeight = paperWidth * 450 / 760
 const rectangleStyle = { fill: '#e0eaf3', stroke: '#6381a2', strokeWidth: 2 }
 const strokeStyle = { stroke: '#547798', strokeWidth: 4 }
 const textStyle = { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 34, color: '#797b82' }
-
-function makeShape(type: Shape['type']): ShapeView {
-  if (type === 'rectangle') return new Rect({ strokeUniform: true })
-  if (type === 'ellipse') return new Ellipse({ strokeUniform: true })
-  return new Polyline([], { fill: '', strokeLineCap: 'round', strokeLineJoin: 'round',
-    perPixelTargetFind: true, padding: 7 })
-}
-
-function pathOffset(object: Polyline) {
-  return new Point(object.pathOffset.x * object.scaleX, object.pathOffset.y * object.scaleY).rotate(object.angle * Math.PI / 180)
-}
-
-function paintShape(object: ShapeView, shape: Shape) {
-  const dash = Math.max(shape.strokeWidth, 1)
-  object.set({ stroke: shape.stroke, strokeWidth: shape.strokeWidth, strokeDashArray: shape.strokeStyle === 'dashed' ? [dash * 3, dash * 2] : null })
-  if (object instanceof Rect && shape.type === 'rectangle') {
-    object.set({ width: shape.width, height: shape.height, fill: shape.fill })
-  } else if (object instanceof Ellipse && shape.type === 'ellipse') {
-    object.set({ rx: shape.width / 2, ry: shape.height / 2, fill: shape.fill })
-  } else if (object instanceof Polyline && (shape.type === 'stroke' || shape.type === 'line' || shape.type === 'arrow')) {
-    object.set({ points: strokePoints(shape).map(({ x, y }) => ({ x, y })), dirty: true })
-    object.setBoundingBox()
-    const offset = pathOffset(object)
-    object.set({ left: shape.x + offset.x, top: shape.y + offset.y })
-  }
-}
-
-function paintObject(object: FabricObject, data: CanvasObject) {
-  if (object instanceof IText && data.type === 'text') {
-    object.set({ text: data.text, fontFamily: data.fontFamily, fontSize: data.fontSize, fill: data.color })
-  } else if ((object instanceof Rect || object instanceof Ellipse || object instanceof Polyline) && data.type !== 'text') {
-    paintShape(object, data)
-  }
-  object.setCoords()
-}
 
 function shapeFromGesture(id: string, type: DrawingType, points: readonly ScenePoint[]): Shape | undefined {
   const geometry = drawingGeometry(type, points)
@@ -392,17 +356,17 @@ export class FabricSurface {
         let object = previous?.view
         if (!object || previous?.type !== data.type) {
           if (object) canvas.remove(object)
-          object = data.type === 'text' ? new IText(data.text) : makeShape(data.type)
+          object = makeSceneObject(data)
           this.ids.set(object, data.id)
           canvas.add(object)
         }
         this.objects.set(data.id, { type: data.type, view: object, data })
-        object.set({ originX: 'center', originY: 'center', left: data.x, top: data.y, angle: data.rotation,
+        object.set({
           transparentCorners: false, cornerSize: 10, lockScalingFlip: true, minScaleLimit: .02,
-          lockSkewingX: true, lockSkewingY: true, scaleX: 1, scaleY: 1 })
+          lockSkewingX: true, lockSkewingY: true })
         const sides = object instanceof Rect || object instanceof Ellipse
         object.setControlsVisibility({ mtr: true, ml: sides, mr: sides, mt: sides, mb: sides })
-        paintObject(object, data)
+        applySceneObject(object, data)
         canvas.moveObjectTo(object, index)
       })
       const targets = selected.flatMap(id => {

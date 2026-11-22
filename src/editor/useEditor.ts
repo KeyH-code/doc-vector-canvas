@@ -2,7 +2,8 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { ObjectChanges, SceneCommand } from '../core/commands'
 import { redo, submit, undo } from '../core/history'
 import type { CanvasObject } from '../core/scene'
-import { downloadLocalProject, readLocalProject } from '../project/localFiles'
+import { selectionSvg } from '../export/selectionSvg'
+import { downloadLocalFile, downloadLocalProject, readLocalProject } from '../project/localFiles'
 import { encodeProject } from '../project/projectFile'
 import { createProjectSession, isProjectDirty, markProjectSaved, openProject, type ProjectSession } from '../project/projectSession'
 import { editingShortcut } from '../ui/shortcuts'
@@ -158,6 +159,21 @@ export function useEditor(theme: 'light' | 'dark') {
   const selected = scene.objects.filter(object => selectedIds.includes(object.id))
   const canUndo = past.length > 0, canRedo = future.length > 0
 
+  function exportSelection() {
+    if (reading || editing || !selectedIds.length) return
+    try {
+      const source = sessionRef.current.history.scene.objects
+      const preview = propertyPreview.current
+      const objects = preview ? source.map(object => object.id === preview.id ? { ...object, ...preview.changes } : object) : source
+      const svg = selectionSvg(objects, selectedIds)
+      if (!svg) return
+      downloadLocalFile(`${projectName}-选区.svg`, svg, 'image/svg+xml;charset=utf-8')
+      setNotice(undefined)
+    } catch {
+      setNotice({ title: '无法导出 SVG。', message: '未生成 SVG 文件，请检查选区后重试。' })
+    }
+  }
+
   function copy() {
     finishPropertyPreview()
     const objects = sessionRef.current.history.scene.objects.filter(object => selectedIds.includes(object.id))
@@ -206,8 +222,8 @@ export function useEditor(theme: 'light' | 'dark') {
 
   return { scene, tool, setTool, selected, editing, canvas, host, canUndo, canRedo, canPaste: clipboard.length > 0,
     undo: () => travel(undo), redo: () => travel(redo), copy, paste, remove, previewProperties, finishPropertyPreview, updateProperties,
-    projectName, notice, reading, newProject, saveProject, openLocalProject,
-    isComposing: () => surface.current?.isComposing() ?? false }
+    projectName, notice, reading, newProject, saveProject, openLocalProject, exportSelection,
+    hasPendingProperties, isComposing: () => surface.current?.isComposing() ?? false }
 }
 
 function pasteOffset(objects: readonly CanvasObject[], axis: 'x' | 'y', size: number) {
