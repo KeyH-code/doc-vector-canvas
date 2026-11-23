@@ -66,6 +66,11 @@ export async function openPdf(bytes: Uint8Array, signal?: AbortSignal): Promise<
   return { proxy, close, render }
 }
 
+async function pageText(page: Awaited<ReturnType<PDFDocumentProxy['getPage']>>) {
+  const content = await page.getTextContent()
+  return content.items.flatMap(item => 'str' in item ? [item.str + (item.hasEOL ? '\n' : '')] : []).join(' ').trim().slice(0, maxSourceText) || null
+}
+
 export async function describePdf(reader: PdfReader, signal?: AbortSignal): Promise<readonly DocumentPage[]> {
   const pages: DocumentPage[] = []
   for (let i = 1; i <= reader.proxy.numPages; i++) {
@@ -73,19 +78,21 @@ export async function describePdf(reader: PdfReader, signal?: AbortSignal): Prom
     const page = await reader.proxy.getPage(i)
     const { width, height } = page.getViewport({ scale: 1 })
     if (!acceptablePageSize(width, height)) throw new Error(`PDF 第 ${i} 页的尺寸超限或无效。`)
-    const content = await page.getTextContent()
-    const text = content.items.flatMap(item => 'str' in item ? [item.str + (item.hasEOL ? '\n' : '')] : []).join(' ').trim().slice(0, maxSourceText)
     const id = crypto.randomUUID()
-    pages.push({ id, width, height, text: text || null, scene: { id, objects: [] } })
+    pages.push({ id, width, height, text: await pageText(page), scene: { id, objects: [] } })
   }
   return pages
 }
 
-export async function validatePdfPages(reader: PdfReader, pages: readonly DocumentPage[], signal?: AbortSignal) {
+export async function refreshPdfPages(reader: PdfReader, pages: readonly DocumentPage[], signal?: AbortSignal) {
   if (reader.proxy.numPages !== pages.length) throw new Error('项目页数与内嵌 PDF 不一致。')
+  const refreshed: DocumentPage[] = []
   for (const [i, page] of pages.entries()) {
     signal?.throwIfAborted()
-    const viewport = (await reader.proxy.getPage(i + 1)).getViewport({ scale: 1 })
+    const original = await reader.proxy.getPage(i + 1), viewport = original.getViewport({ scale: 1 })
     if (viewport.width !== page.width || viewport.height !== page.height) throw new Error(`第 ${i + 1} 页尺寸与内嵌 PDF 不一致。`)
+    const text = await pageText(original)
+    refreshed.push(page.text === text ? page : { ...page, text })
   }
+  return refreshed
 }

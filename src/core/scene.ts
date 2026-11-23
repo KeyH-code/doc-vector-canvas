@@ -155,13 +155,12 @@ export function createScene(id: string): CanvasScene {
   return { id, objects: [] }
 }
 
+export function sameObject(a?: CanvasObject, b?: CanvasObject): boolean {
+  return a === b || (!!a && !!b && a.type === b.type && sameField(a, b))
+}
+
 export function sameScene(a: CanvasScene, b: CanvasScene): boolean {
   if (a === b) return true
   return a.id === b.id && sameDocument(a.document, b.document) && sameField(a.images ?? [], b.images ?? []) &&
-    a.objects.length === b.objects.length && a.objects.every((object, index) => {
-    const other = b.objects[index]
-    return object === other || (object.type === other.type &&
-      Object.keys(object).length === Object.keys(other).length &&
-      Object.entries(object).every(([key, value]) => sameField(value, other[key as keyof CanvasObject])))
-  })
+    a.objects.length === b.objects.length && a.objects.every((object, index) => sameObject(object, b.objects[index]))
 }

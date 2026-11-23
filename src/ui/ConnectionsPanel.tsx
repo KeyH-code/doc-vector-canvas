@@ -1,5 +1,6 @@
-import { bindingKey, ends, isConnector } from '../core/connections'
+import { ends, isConnector } from '../core/connections'
 import type { CanvasObject } from '../core/scene'
+import { explicitConnections } from '../core/sceneGraph'
 import { Icon } from './Icon'
 import { objectKind, objectKinds, type ObjectKind } from './ObjectNavigator'
 
@@ -14,21 +15,27 @@ export function ConnectionsPanel({ object, objects, onLocate }: {
     counts.set(kind, count)
     names.set(item.id, `${objectKinds[kind].label} ${count}`)
   }
+  const relations = explicitConnections(objects)
+  const byLine = new Map<string, Partial<Record<(typeof ends)[number], string>>>()
+  for (const { connectorId, targetId, end } of relations) {
+    const hosts = byLine.get(connectorId) ?? {}
+    hosts[end] = targetId
+    byLine.set(connectorId, hosts)
+  }
   const links: Link[] = []
-  if (isConnector(object)) {
-    if (object.startBinding || object.endBinding) for (const [index, end] of ends.entries()) {
+  const hosts = byLine.get(object.id)
+  if (isConnector(object) && hosts) {
+    for (const [index, end] of ends.entries()) {
       links.push({ key: end, label: object.type === 'arrow' ? end === 'start' ? '起点' : '终点' : `端点 ${index + 1}`,
-        target: object[bindingKey[end]]?.targetId })
+        target: hosts[end] })
     }
   }
-  for (const line of objects) {
-    if (!isConnector(line)) continue
-    for (const end of ends) {
-      if (line[bindingKey[end]]?.targetId !== object.id) continue
-      const opposite = line[bindingKey[end === 'start' ? 'end' : 'start']]?.targetId
-      const direction = line.type === 'line' ? '连接' : end === 'start' ? '出向' : '入向'
-      links.push({ key: `${line.id}:${end}`, label: `${direction} · ${names.get(line.id)}`, target: opposite ?? line.id })
-    }
+  for (const relation of relations) {
+    if (relation.targetId !== object.id) continue
+    const { connectorId, end } = relation
+    const opposite = byLine.get(connectorId)?.[end === 'start' ? 'end' : 'start']
+    const direction = relation.direction === 'undirected' ? '连接' : relation.direction === 'out' ? '出向' : '入向'
+    links.push({ key: `${connectorId}:${end}`, label: `${direction} · ${names.get(connectorId)}`, target: opposite ?? connectorId })
   }
 
   return <section className="connections" aria-labelledby="connections-heading">

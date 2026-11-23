@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, type Page } from '@playwright/test'
 import { safeUnzipSync } from '@web-ppt/core/zip'
+import { readSceneGraph } from '../../src/core/sceneGraph'
+import { decodeProject } from '../../src/project/projectFile'
 
 const mime = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 const bluePng = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAE0lEQVR4nGMUbbrDAANMcBY6BwA1dAF5c9UVkwAAAABJRU5ErkJggg=='
@@ -55,6 +57,11 @@ for (const [sample, width] of [['wide', 960], ['standard', 720]] as const) {
     expect(doc.pages[0].text).toContain('中文排版与母版')
     expect(doc.pages[1].text).toContain('第二组')
     expect(doc.pages[2].text).toContain('隐藏页')
+    const decoded = decodeProject(saved.toString())
+    if (!decoded.ok) throw new Error(decoded.message)
+    const graph = readSceneGraph(decoded.scene, { projectId: decoded.scene.id, pageId: doc.pages[1].id })!
+    expect(graph.source).toEqual({ kind: 'pptx', locked: true, text: { status: 'available', provenance: 'stored', value: expect.stringContaining('第二组') } })
+    expect(graph.objects.map(item => item.record.type)).toEqual(['rectangle'])
     const pixels = await page.evaluate(async (backgrounds: string[]) => {
       const samples = []
       for (const data of backgrounds) {

@@ -312,7 +312,7 @@ export function useEditor(theme: 'light' | 'dark') {
         if (opened.document?.source.kind === 'pptx') loaded = await preparePptx(opened.document.source.backgrounds, controller.signal)
         else {
           const pdf = await preparePdf(opened, controller.signal)
-          if (pdf) loaded = { ...pdf, pdfReader: pdf.reader }
+          if (pdf) { opened = pdf.scene; loaded = { reader: pdf.reader, first: pdf.first, pdfReader: pdf.reader } }
         }
       }
       if (request !== openRequest.current) return

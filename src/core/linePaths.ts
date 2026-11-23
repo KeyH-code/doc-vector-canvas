@@ -46,6 +46,18 @@ export function pathTip(path: LinePath) {
   return { tip, tangent: { x: 0, y: 0 } }
 }
 
+/** The same local arrowhead points are used for drawing and structural bounds. */
+export function pathArrowhead(path: LinePath): readonly ScenePoint[] {
+  const { tip, tangent } = pathTip(path)
+  const length = Math.hypot(tangent.x, tangent.y)
+  if (!length) return []
+  const lastStart = path.segments.length > 1 ? path.segments.at(-2)!.to : path.start
+  const head = Math.min(24, Math.max(length, distance(tip, lastStart)) / 3)
+  const x = tangent.x / length, y = tangent.y / length, side = head * .48
+  const wing = (sign: number) => ({ x: tip.x - head * x + sign * side * y, y: tip.y - head * y - sign * side * x })
+  return [wing(1), tip, wing(-1)]
+}
+
 export function mapLinePath(path: LinePath, transform: (point: ScenePoint) => ScenePoint): LinePath {
   const start = transform(path.start)
   return path.kind === 'polyline'

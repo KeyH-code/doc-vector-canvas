@@ -1,6 +1,6 @@
 import { Ellipse, FabricObject, IText, Path, Point, Polygon, Polyline, Rect } from 'fabric'
 import { polygonVertices, strokePoints } from '../core/geometry'
-import { pathTip, type LinePath } from '../core/linePaths'
+import { pathArrowhead, type LinePath } from '../core/linePaths'
 import { imageDataUrl, type ImageAsset } from '../core/imageAssets'
 import type { CanvasObject, ImageObject, TextObject } from '../core/scene'
 import { preparedImage } from '../project/imageImport'
@@ -42,15 +42,8 @@ function vectorPath(path: LinePath, arrow: boolean) {
   if (path.kind === 'polyline') commands.push(...path.segments.map(s => `L ${xy(s.to)}`))
   else commands.push(...path.segments.map(s => `C ${xy(s.c1)} ${xy(s.c2)} ${xy(s.to)}`))
   if (arrow) {
-    const { tip, tangent } = pathTip(path)
-    const length = Math.hypot(tangent.x, tangent.y)
-    if (length) {
-      const segment = path.segments.length > 1 ? path.segments.at(-2)!.to : path.start
-      const head = Math.min(24, Math.max(length, Math.hypot(tip.x - segment.x, tip.y - segment.y)) / 3)
-      const x = tangent.x / length, y = tangent.y / length, side = head * .48
-      const wing = (sign: number) => xy({ x: tip.x - head * x + sign * side * y, y: tip.y - head * y - sign * side * x })
-      commands.push(`M ${wing(1)} L ${xy(tip)} L ${wing(-1)}`)
-    }
+    const [left, tip, right] = pathArrowhead(path)
+    if (left) commands.push(`M ${xy(left)} L ${xy(tip)} L ${xy(right)}`)
   }
   return commands.join(' ')
 }

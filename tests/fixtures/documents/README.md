@@ -5,5 +5,6 @@
 - `macro.pptx`：主文档声明为宏启用类型，**不含宏代码**，用来确认改文件名不能绕过格式检查。
 - `duplicate-link.pptx`、`missing-image.pptx`、`utf16.pptx`：分别含重复关系 ID、缺失的内嵌图片部件、当前渲染库不支持的 UTF-16 页面。它们不应发布为有缺损的项目。
 - `reordered.pptx`：原稿列表顺序是 3、2、1，底稿和只读文字都应按该列表，而不是按部件文件名顺序出现。
+- `flow-table.png`：人工生成的三列表格示例，用桌面 Excel 导出 PDF，再按表格范围转 PNG。E8 用它验证图片外框绑定、扫描页不做 OCR，以及图片和曲线可一同导出 SVG；不含用户或业务数据。
 
 从仓库根目录用现有 Python 依赖重新生成：`python spikes/pptx-renderer/make_fixtures.py tests/fixtures/documents`。PDF 测试的 `pdfFixture.ts` 在测试进程内生成另一套样例。

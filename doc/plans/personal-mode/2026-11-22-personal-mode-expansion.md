@@ -130,7 +130,7 @@
 
 **顺序更新：** 文档画布验收后执行本节；增加其 [DV-08 按页结构化关系](document-canvas/validation.md) 验证，按「页 ID + 对象 ID」读取和授权，不改锁定底稿或未授权页。以下单画布回归仍保留。
 
-**文件：** 新建 `src/core/sceneGraph.ts`、`tests/unit/sceneGraph.test.ts`、`tests/e2e/canvas-expansion-flow.spec.ts`、`doc/plans/personal-mode/canvas-expansion/results.md`；修改 `src/core/commands.ts` 及必要的正式接线，不新增正式 Agent 页面或接口服务。
+**文件：** `src/core/sceneGraph.ts`、`src/core/localSceneAccess.ts`、`tests/unit/sceneGraph.test.ts`、`tests/e2e/canvas-expansion-flow.spec.ts`；修改 `src/core/commands.ts` 及必要的正式接线，不新增正式 Agent 页面或接口服务。见 [E8 验证记录](canvas-expansion/results.md)。
 
 1. 用「输入 → 处理 → 输出」和额外未选对象写核心测试：按 ID 查询对象和显式关系，区分两端/方向；凡仅有相交或贴边均无关系。按范围改「处理」的位置和一条获授权箭头的样式，未授权对象的数据不变，绑定端自然跟随；一次撤销恢复。测试未知 ID、越权、非法锚点与受限删除触发的跨对象副作用；失败时场景、撤销与重做都不变。
 2. 提供**仅本地、无需模型**的结构化读入口；复用已有受限批次写入口，不给程序开一条绕过场景校验的写通道。区分「被命令写入的对象」与「随关系重新计算、但记录没被改写的对象」。读取时能区分直线、折线、曲线及箭头，并从真实路径区分「接到一条线」与「接到那条线的宿主」；关系由场景推导，不从截图猜测、不另存图数据库。

@@ -53,8 +53,7 @@ export function applyCommands(scene: CanvasScene, commands: readonly SceneComman
       return { ok: false, code: 'invalid-command', index }
     }
     if (scope && (scope.sceneId !== scene.id ||
-      ((command.type === 'create' || command.type === 'duplicate' || command.type === 'add-image-asset') && scope.allowCreate !== true) ||
-      (command.type !== 'create' && command.type !== 'add-image-asset' && !scope.writableIds.includes(command.id)))) {
+      ((command.type === 'create' || command.type === 'duplicate' || command.type === 'add-image-asset') && scope.allowCreate !== true))) {
       return { ok: false, code: 'out-of-scope', index }
     }
 
@@ -80,6 +79,7 @@ export function applyCommands(scene: CanvasScene, commands: readonly SceneComman
 
     const target = objects.findIndex((object) => object.id === command.id)
     if (target < 0) return { ok: false, code: 'unknown-object', index }
+    if (scope && !scope.writableIds.includes(command.id)) return { ok: false, code: 'out-of-scope', index }
     const previous = objects[target]
     if (command.type === 'delete') {
       const dependsOnTarget = (object: CanvasObject): object is LineObject => hasBinding(object) &&

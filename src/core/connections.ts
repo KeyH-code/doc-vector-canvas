@@ -50,12 +50,16 @@ function boundaryVertices(host: BoxObject | ImageObject): readonly ScenePoint[] 
   return [{ x: -x, y: -y }, { x, y: -y }, { x, y }, { x: -x, y }]
 }
 
-function textFrame(text: TextObject): BoxObject {
+export function textFrameSize(text: TextObject) {
+  if (text.anchorSize) return text.anchorSize
   const rows = text.text.split(/\r?\n/)
   const units = (value: string) => Array.from(value).reduce((sum, char) => sum + (/\p{Mark}/u.test(char) ? 0 : char.codePointAt(0)! > 255 ? 1 : 'MW@%'.includes(char) ? .86 : 'ilI.,! '.includes(char) ? .3 : .56), 0)
-  const size = text.anchorSize ?? { width: rows.reduce((max, row) => Math.max(max, units(row)), .6) * text.fontSize,
+  return { width: rows.reduce((max, row) => Math.max(max, units(row)), .6) * text.fontSize,
     height: (1.13 + (rows.length - 1) * 1.31) * text.fontSize }
-  return { ...text, ...size, type: 'rectangle', fill: 'transparent', stroke: text.color, strokeWidth: 0 }
+}
+
+function textFrame(text: TextObject): BoxObject {
+  return { ...text, ...textFrameSize(text), type: 'rectangle', fill: 'transparent', stroke: text.color, strokeWidth: 0 }
 }
 
 function pathPart(host: CanvasObject, index: number, display: (line: LineObject) => LineObject | undefined): { from: ScenePoint; part: StraightPart | CubicPart; object: CanvasObject } | undefined {
