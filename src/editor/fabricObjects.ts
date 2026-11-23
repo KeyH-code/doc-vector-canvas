@@ -1,10 +1,27 @@
-import { Ellipse, IText, Path, Point, Polygon, Polyline, Rect, type FabricObject } from 'fabric'
+import { Ellipse, FabricObject, IText, Path, Point, Polygon, Polyline, Rect } from 'fabric'
 import { polygonVertices, strokePoints } from '../core/geometry'
 import { pathTip, type LinePath } from '../core/linePaths'
-import type { CanvasObject, TextObject } from '../core/scene'
+import { imageDataUrl, type ImageAsset } from '../core/imageAssets'
+import type { CanvasObject, ImageObject, TextObject } from '../core/scene'
+import { preparedImage } from '../project/imageImport'
 
-export type Shape = Exclude<CanvasObject, TextObject>
+export type Shape = Exclude<CanvasObject, TextObject | ImageObject>
 export type ShapeView = Rect | Ellipse | Polyline | Path
+
+export class ImageView extends FabricObject {
+  constructor(readonly asset: ImageAsset) {
+    super({ strokeWidth: 0, objectCaching: false })
+  }
+
+  _render(ctx: CanvasRenderingContext2D) {
+    const image = preparedImage(this.asset)
+    if (image) ctx.drawImage(image, -this.width / 2, -this.height / 2, this.width, this.height)
+  }
+
+  _toSVG() {
+    return ['<image ', 'COMMON_PARTS', `x="${-this.width / 2}" y="${-this.height / 2}" width="${this.width}" height="${this.height}" preserveAspectRatio="none" xlink:href="${imageDataUrl(this.asset)}" />\n`]
+  }
+}
 
 export function makeShape(type: Shape['type'], path?: LinePath): ShapeView {
   if (type === 'rectangle' || type === 'square') return new Rect({ strokeUniform: true })
@@ -64,7 +81,9 @@ export function paintShape(object: ShapeView, shape: Shape) {
 export function paintObject(object: FabricObject, data: CanvasObject) {
   if (object instanceof IText && data.type === 'text') {
     object.set({ text: data.text, fontFamily: data.fontFamily, fontSize: data.fontSize, fill: data.color })
-  } else if ((object instanceof Rect || object instanceof Ellipse || object instanceof Polyline || object instanceof Path) && data.type !== 'text') {
+  } else if (object instanceof ImageView && data.type === 'image') {
+    object.set({ width: data.width, height: data.height })
+  } else if ((object instanceof Rect || object instanceof Ellipse || object instanceof Polyline || object instanceof Path) && data.type !== 'text' && data.type !== 'image') {
     paintShape(object, data)
   }
   object.setCoords()
@@ -75,7 +94,12 @@ export function applySceneObject(object: FabricObject, data: CanvasObject) {
   paintObject(object, data)
 }
 
-export function makeSceneObject(data: CanvasObject): FabricObject {
+export function makeSceneObject(data: CanvasObject, images?: ReadonlyMap<string, ImageAsset>): FabricObject {
+  if (data.type === 'image') {
+    const asset = images?.get(data.assetId)
+    if (!asset) throw new Error('图片资源引用无效。')
+    return new ImageView(asset)
+  }
   return data.type === 'text' ? new IText(data.text) : makeShape(data.type, 'path' in data ? data.path : undefined)
 }
 

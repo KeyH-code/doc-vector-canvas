@@ -4,8 +4,8 @@ import { atLocal, bindingKey, connectionResolver, connectorForDisplay, endpointG
   type Endpoint, type EndpointBinding, type Endpoints } from '../core/connections'
 import { drawingGeometry, type DrawingType, type ScenePoint } from '../core/geometry'
 import { appendSegment, distance, fitCurve, makePolyline, mapLinePath, maxPathSegments, pathEnd, pathLength, snappedCurveSamples, type PolylinePath } from '../core/linePaths'
-import { isCanvasObject, type BoxObject, type CanvasObject, type CanvasScene, type LineObject, type TextObject } from '../core/scene'
-import { applySceneObject, makeSceneObject, makeShape, paintObject, paintShape, pathOffset, type Shape, type ShapeView } from './fabricObjects'
+import { isCanvasObject, type BoxObject, type CanvasObject, type CanvasScene, type ImageObject, type LineObject, type TextObject } from '../core/scene'
+import { ImageView, applySceneObject, makeSceneObject, makeShape, paintObject, paintShape, pathOffset, type Shape, type ShapeView } from './fabricObjects'
 import { fitViewport, initialViewport, panViewport, viewportMatrix, viewToWorld, worldToView, zoomViewport, type Viewport } from './viewport'
 
 type PolylineTool = 'polyline' | 'polylineArrow'
@@ -32,7 +32,7 @@ function translateFreeEnd(line: LineObject, delta: ScenePoint) {
   return { x: line.x + delta.x, y: line.y + delta.y }
 }
 
-function scaledBox(data: BoxObject, view: FabricObject) {
+function scaledBox(data: BoxObject | ImageObject, view: FabricObject) {
   const width = data.width * view.scaleX
   return { width, height: data.type === 'square' ? width : data.height * view.scaleY }
 }
@@ -97,6 +97,8 @@ export class FabricSurface {
   private composition?: { value: string; start: number; end: number }
   private pendingSelection?: readonly string[]
   private syncing = false
+  private activePointer?: number
+  private idleWaiters: (() => void)[] = []
 
   constructor(element: HTMLCanvasElement, host: HTMLElement, private readonly events: {
     commit: (commands: readonly SceneCommand[]) => void
@@ -120,6 +122,7 @@ export class FabricSurface {
     const layer = canvas.upperCanvasEl
     const signal = this.listeners.signal
     layer.addEventListener('pointerdown', event => {
+      if (event.isPrimary && event.button === 0) this.activePointer = event.pointerId
       if (this.editing || !event.isPrimary || event.button !== 0) return
       if (!this.hand && !this.temporaryHand) {
         if (this.extension) {
@@ -168,20 +171,28 @@ export class FabricSurface {
         if (this.extension && event.type === 'pointerup' && !press.moved && distance(press.origin, releasedAt) < 4) {
           this.updateExtension(this.canvas.getScenePoint(event), true)
         }
+        this.releasePointer(event.pointerId)
         return
       }
       if (this.endpointDrag?.id === event.pointerId) {
         event.stopImmediatePropagation()
         if (event.type === 'pointerup') this.moveEndpoint(event)
         this.finishEndpointDrag(event.type === 'pointerup')
+        this.releasePointer(event.pointerId)
         return
       }
       if (this.pan?.id !== event.pointerId) return
       event.stopImmediatePropagation()
       this.pan = undefined
       this.showCursor()
+      this.releasePointer(event.pointerId)
     }
     for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) layer.addEventListener(name, endPan, { signal, capture: true })
+    // Uncaptured gestures finish in Fabric's document handler before bubbling to window.
+    for (const name of ['pointerup', 'pointercancel'] as const) {
+      window.addEventListener(name, event => this.releasePointer(event.pointerId), { signal })
+    }
+    window.addEventListener('blur', () => this.releasePointer(), { signal })
     layer.addEventListener('pointerleave', () => {
       if (!this.drawing && !this.endpointDrag) this.showCandidate()
     }, { signal })
@@ -306,6 +317,28 @@ export class FabricSurface {
 
   setZoom(zoom: number) {
     if (this.viewport) this.showViewport(zoomViewport(this.viewport, this.size, { x: this.size.width / 2, y: this.size.height / 2 }, zoom))
+  }
+
+  imagePlacement(width: number, height: number) {
+    const zoom = this.viewport?.zoom ?? 1
+    const scale = Math.min(1, this.size.width * .6 / (width * zoom), this.size.height * .6 / (height * zoom))
+    return { ...(this.viewport?.center ?? { x: 500, y: 296 }), width: width * scale, height: height * scale }
+  }
+
+  whenIdle() {
+    return this.activePointer !== undefined || this.editing
+      ? new Promise<void>(resolve => this.idleWaiters.push(resolve)) : undefined
+  }
+
+  private releasePointer(id = this.activePointer) {
+    if (id !== this.activePointer) return
+    this.activePointer = undefined
+    this.notifyIdle()
+  }
+
+  private notifyIdle() {
+    if (this.activePointer !== undefined || this.editing) return
+    for (const resolve of this.idleWaiters.splice(0)) resolve()
   }
 
   fitContent(id?: string) {
@@ -714,6 +747,7 @@ export class FabricSurface {
     const text = this.composition?.value ?? object.text
     this.composition = undefined
     this.editing = undefined
+    this.notifyIdle()
     const center = this.editingCenter
     this.editingCenter = undefined
     this.events.editing(false)
@@ -757,6 +791,7 @@ export class FabricSurface {
   resetInteraction() {
     this.finishEditing()
     this.cancelPlacement()
+    this.releasePointer()
     this.transforming = false
     this.pendingSelection = undefined
     this.syncing = true
@@ -785,6 +820,7 @@ export class FabricSurface {
       this.pendingSelection = undefined
       const ids = new Set(scene.objects.map(({ id }) => id))
       const resolver = connectionResolver(this.sceneIndex)
+      const images = new Map((scene.images ?? []).map(asset => [asset.id, asset]))
       for (const [id, { view }] of this.objects) {
         if (!ids.has(id)) {
           canvas.remove(view)
@@ -794,9 +830,10 @@ export class FabricSurface {
       scene.objects.forEach((data, index) => {
         const previous = this.objects.get(data.id)
         let object = previous?.view
-        if (!object || previous?.type !== data.type || (object instanceof Path) !== (isConnector(data) && !!data.path)) {
+        if (!object || previous?.type !== data.type || (object instanceof Path) !== (isConnector(data) && !!data.path) ||
+            (data.type === 'image' && (!(object instanceof ImageView) || object.asset !== images.get(data.assetId)))) {
           if (object) canvas.remove(object)
-          object = makeSceneObject(data)
+          object = makeSceneObject(data, images)
           this.ids.set(object, data.id)
           canvas.add(object)
         }
@@ -836,6 +873,7 @@ export class FabricSurface {
   }
 
   dispose() {
+    for (const resolve of this.idleWaiters.splice(0)) resolve()
     this.listeners.abort()
     this.resize.disconnect()
     void this.canvas.dispose()

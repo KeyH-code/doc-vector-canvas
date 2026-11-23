@@ -12,7 +12,7 @@ const tools = [
 const extraShapes = ['square', 'diamond', 'star'] as const
 
 function ToolMenu({ label, id, icon, options, active, onTool }: {
-  label: string; id: string; icon: 'diamond' | 'line' | 'arrow'; options: readonly (keyof typeof objectKinds)[]
+  label: string; id: string; icon: 'diamond' | 'line' | 'arrow'; options: readonly (Tool & keyof typeof objectKinds)[]
   active: Tool; onTool: (tool: Tool) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -42,7 +42,7 @@ function ToolMenu({ label, id, icon, options, active, onTool }: {
   </div>
 }
 
-export function Toolbar({ tool, hand, snap, editing, onTool, onHand, onSnap, onUndo, onRedo, canUndo, canRedo }: {
+export function Toolbar({ tool, hand, snap, editing, onTool, onHand, onSnap, onUndo, onRedo, canUndo, canRedo, onImage, imageBusy }: {
   tool: Tool
   hand: boolean
   snap: boolean
@@ -54,7 +54,10 @@ export function Toolbar({ tool, hand, snap, editing, onTool, onHand, onSnap, onU
   onRedo: () => void
   canUndo: boolean
   canRedo: boolean
+  onImage: (file: File) => void
+  imageBusy: boolean
 }) {
+  const imageInput = useRef<HTMLInputElement>(null)
   return (
     <div className="toolstrip" role="group" aria-label="绘图工具">
       <button type="button" className="tool" aria-pressed={tool === 'select' && !hand} onClick={() => onTool('select')}>
@@ -72,6 +75,14 @@ export function Toolbar({ tool, hand, snap, editing, onTool, onHand, onSnap, onU
       <ToolMenu label="线条" id="line-tools" icon="line" options={['line', 'polyline', 'curve']} active={tool} onTool={onTool} />
       <ToolMenu label="箭头" id="arrow-tools" icon="arrow" options={['arrow', 'polylineArrow', 'curveArrow']} active={tool} onTool={onTool} />
       <ToolMenu label="其他图形" id="extra-shapes" icon="diamond" options={extraShapes} active={tool} onTool={onTool} />
+      <button type="button" className="tool" aria-label="插入图片" disabled={imageBusy || editing} onClick={() => imageInput.current?.click()}>
+        <span className="tool-icon"><Icon name="image" /></span>图片
+      </button>
+      <input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" hidden ref={imageInput} onChange={event => {
+        const file = event.currentTarget.files?.[0]
+        event.currentTarget.value = ''
+        if (file) onImage(file)
+      }} />
       <button type="button" className="tool" aria-pressed={snap} disabled={editing} onClick={onSnap}
         title="开启后，线条和箭头的端点可吸附到对象外框或路径">
         <span className="tool-icon"><Icon name="snap" /></span>端点吸附

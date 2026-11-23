@@ -1,6 +1,6 @@
 import { polygonVertices, type ScenePoint } from './geometry'
 import { interpolate, movePathEnds, pathEnd, pointOnPart, projectParameter, type CubicPart, type StraightPart } from './linePaths'
-import type { BoxObject, CanvasObject, LineObject, TextObject } from './scene'
+import type { BoxObject, CanvasObject, ImageObject, LineObject, TextObject } from './scene'
 
 export type Endpoint = 'start' | 'end'
 export type EdgeBinding = Readonly<{ targetId: string; kind: 'edge'; edge: number; t: number }>
@@ -43,7 +43,7 @@ export function atLocal(object: Pick<CanvasObject, 'x' | 'y' | 'rotation'>, poin
   return rotate({ x: point.x - object.x, y: point.y - object.y }, -object.rotation)
 }
 
-function boundaryVertices(host: BoxObject): readonly ScenePoint[] {
+function boundaryVertices(host: BoxObject | ImageObject): readonly ScenePoint[] {
   if (host.type === 'diamond' || host.type === 'star') return polygonVertices(host.type, host.width, host.height)
   if (host.type === 'ellipse') return []
   const x = host.width / 2, y = host.height / 2

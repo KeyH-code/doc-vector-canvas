@@ -1,4 +1,5 @@
 const paths = {
+  image: 'M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 8h1',
   logo: 'M4 4h16v16H4z M8 15l4-6 4 6M9.5 13h5',
   sidebar: 'M3 5h18v14H3z M9 5v14m7-10-3 3 3 3',
   pointer: 'm6 4 1 15 4-4 6 1z',

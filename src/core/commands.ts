@@ -1,5 +1,6 @@
 import { isCanvasObject, isDataRecord, sameScene, type CanvasObject, type CanvasScene, type LineObject, type RectangleObject, type StrokeObject, type TextObject } from './scene'
 import { bindingKey, detachEndpoints, ends, hasBinding, indexObjects, invalidConnector, isConnector, validConnector, type Endpoint } from './connections'
+import { imageAssetsForObjects, isImageAsset, type ImageAsset } from './imageAssets'
 
 type Fields<T> = Omit<T, 'id' | 'type'>
 type EditableFields = Fields<RectangleObject> & Fields<TextObject> & Fields<LineObject> & Fields<StrokeObject>
@@ -8,11 +9,12 @@ export type ObjectChanges = { -readonly [Key in keyof EditableFields]?: Editable
 export type SceneCommand = Readonly<{ type: 'create'; object: CanvasObject }> |
   Readonly<{ type: 'update'; id: string; changes: ObjectChanges }> |
   Readonly<{ type: 'delete'; id: string }> |
-  Readonly<{ type: 'duplicate'; id: string; newId: string; x?: number; y?: number }>
+  Readonly<{ type: 'duplicate'; id: string; newId: string; x?: number; y?: number }> |
+  Readonly<{ type: 'add-image-asset'; asset: ImageAsset }>
 
 export type CommandScope = Readonly<{ sceneId: string; writableIds: readonly string[]; allowCreate?: boolean }>
 
-export type CommandErrorCode = 'duplicate-object' | 'unknown-object' | 'invalid-object' | 'invalid-connection' | 'out-of-scope' | 'invalid-command'
+export type CommandErrorCode = 'duplicate-object' | 'unknown-object' | 'invalid-object' | 'invalid-connection' | 'invalid-image' | 'out-of-scope' | 'invalid-command'
 export type CommandResult = { ok: true; scene: CanvasScene } |
   { ok: false; code: CommandErrorCode; index: number }
 
@@ -28,6 +30,8 @@ function pathCount(object: CanvasObject) {
 /** Only trusted callers with access to the whole scene may omit scope. */
 export function applyCommands(scene: CanvasScene, commands: readonly SceneCommand[], scope?: CommandScope): CommandResult {
   const objects = [...scene.objects]
+  const assets = new Map((scene.images ?? []).map(asset => [asset.id, asset]))
+  let imageEdit = 0
   const touched = new Map<string, number>()
   const lookup = indexObjects(objects)
   // Forward references let a paste preserve paint order even when a line is below its hosts.
@@ -44,20 +48,30 @@ export function applyCommands(scene: CanvasScene, commands: readonly SceneComman
   const remember = (object: CanvasObject, index: number) => { lookup.set(object.id, object); touched.set(object.id, index) }
 
   for (const [index, command] of commands.entries()) {
-    if (!isDataRecord(command) || (command.type !== 'create' && command.type !== 'update' && command.type !== 'delete' && command.type !== 'duplicate')) {
+    if (!isDataRecord(command) || (command.type !== 'create' && command.type !== 'update' && command.type !== 'delete' && command.type !== 'duplicate' && command.type !== 'add-image-asset')) {
       return { ok: false, code: 'invalid-command', index }
     }
     if (scope && (scope.sceneId !== scene.id ||
-      ((command.type === 'create' || command.type === 'duplicate') && scope.allowCreate !== true) ||
-      (command.type !== 'create' && !scope.writableIds.includes(command.id)))) {
+      ((command.type === 'create' || command.type === 'duplicate' || command.type === 'add-image-asset') && scope.allowCreate !== true) ||
+      (command.type !== 'create' && command.type !== 'add-image-asset' && !scope.writableIds.includes(command.id)))) {
       return { ok: false, code: 'out-of-scope', index }
+    }
+
+    if (command.type === 'add-image-asset') {
+      const asset = command.asset
+      if (!isImageAsset(asset) || assets.has(asset.id)) return { ok: false, code: 'invalid-image', index }
+      assets.set(asset.id, Object.freeze({ ...asset }))
+      imageEdit = index
+      continue
     }
 
     if (command.type === 'create') {
       if (!isCanvasObject(command.object)) return { ok: false, code: 'invalid-object', index }
       if (lookup.has(command.object.id)) return { ok: false, code: 'duplicate-object', index }
+      if (command.object.type === 'image' && !assets.has(command.object.assetId)) return { ok: false, code: 'invalid-image', index }
       if (hasBinding(command.object) && !validAt(command.object, index)) return { ok: false, code: 'invalid-connection', index }
       const object = snapshot(command.object)
+      if (object.type === 'image') imageEdit = index
       objects.push(object)
       remember(object, index)
       continue
@@ -112,6 +126,7 @@ export function applyCommands(scene: CanvasScene, commands: readonly SceneComman
       if (cleared(end)) delete next[key as keyof typeof next]
     }
     if (!isCanvasObject(next)) return { ok: false, code: 'invalid-object', index }
+    if (next.type === 'image' && !assets.has(next.assetId)) return { ok: false, code: 'invalid-image', index }
     if (hasBinding(next) && !validAt(next, index)) return { ok: false, code: 'invalid-connection', index }
     const object = snapshot(next)
     objects[target] = object
@@ -126,6 +141,8 @@ export function applyCommands(scene: CanvasScene, commands: readonly SceneComman
   const invalid = invalidConnector(objects)
   if (invalid) return { ok: false, code: 'invalid-connection', index: Math.max(touched.get(invalid.id) ?? -1,
     ...ends.map(end => touched.get(invalid[bindingKey[end]]?.targetId ?? '') ?? -1), 0) }
-  const next: CanvasScene = { id: scene.id, objects }
+  const images = imageAssetsForObjects(objects, [...assets.values()])
+  if (!images) return { ok: false, code: 'invalid-image', index: imageEdit }
+  const next: CanvasScene = { id: scene.id, objects, ...(images.length ? { images } : {}) }
   return { ok: true, scene: sameScene(scene, next) ? scene : next }
 }

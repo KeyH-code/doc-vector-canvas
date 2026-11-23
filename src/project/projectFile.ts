@@ -1,5 +1,6 @@
 import { hasExactKeys, isCanvasObject, isDataRecord, isNonBlankString, type CanvasObject, type CanvasScene } from '../core/scene'
 import { invalidConnector, isConnector } from '../core/connections'
+import { imageAssetBytes, imageAssetsForObjects, isImageAsset, maxProjectImageBytes, type ImageAsset } from '../core/imageAssets'
 
 const format = 'document-vector-canvas'
 const version = 2
@@ -27,6 +28,7 @@ const messages = {
   'invalid-scene': '项目中的画布数据无效。',
   'invalid-object': '项目中有未知类型或属性无效的图元。',
   'invalid-connection': '项目中有无法定位到有效图形边界的连接。',
+  'invalid-image': '项目中的图片资源损坏、超限或引用无效。',
   'duplicate-object': '项目中有重复的图元 ID。',
 } as const
 
@@ -38,7 +40,7 @@ function fail(code: ProjectFileError['code']): ProjectFileError {
 }
 
 export function encodeProject(scene: CanvasScene): string {
-  return JSON.stringify({ format, version, scene: { id: scene.id, objects: scene.objects } }, null, 2)
+  return JSON.stringify({ format, version, scene: { id: scene.id, objects: scene.objects, ...(scene.images ? { images: scene.images } : {}) } }, null, 2)
 }
 
 export function decodeProject(source: string): ProjectFileResult {
@@ -53,8 +55,9 @@ export function decodeProject(source: string): ProjectFileResult {
   if (data.version !== 1 && data.version !== version) return fail('unsupported-version')
   if (!hasExactKeys(data, ['format', 'version', 'scene'])) return fail('invalid-scene')
   const scene = data.scene
-  if (!isDataRecord(scene) || !hasExactKeys(scene, ['id', 'objects']) ||
-      !isNonBlankString(scene.id) || !Array.isArray(scene.objects)) return fail('invalid-scene')
+  if (!isDataRecord(scene) || !isNonBlankString(scene.id) || !Array.isArray(scene.objects)) return fail('invalid-scene')
+  const hasImages = data.version === version && Object.hasOwn(scene, 'images')
+  if (!hasExactKeys(scene, hasImages ? ['id', 'objects', 'images'] : ['id', 'objects'])) return fail('invalid-scene')
 
   const seen = new Set<string>()
   const objects: CanvasObject[] = []
@@ -65,6 +68,19 @@ export function decodeProject(source: string): ProjectFileResult {
     seen.add(object.id)
     objects.push(object)
   }
+  const images: ImageAsset[] = [], imageIds = new Set<string>()
+  let size = 0
+  if (hasImages) {
+    if (!Array.isArray(scene.images)) return fail('invalid-image')
+    for (const asset of scene.images) {
+      if (!isImageAsset(asset) || imageIds.has(asset.id)) return fail('invalid-image')
+      size += imageAssetBytes(asset)
+      if (size > maxProjectImageBytes) return fail('invalid-image')
+      imageIds.add(asset.id)
+      images.push(asset)
+    }
+  }
+  if (imageAssetsForObjects(objects, images)?.length !== images.length) return fail('invalid-image')
   if (invalidConnector(objects)) return fail('invalid-connection')
-  return { ok: true, scene: { id: scene.id, objects } }
+  return { ok: true, scene: { id: scene.id, objects, ...(images.length ? { images } : {}) } }
 }

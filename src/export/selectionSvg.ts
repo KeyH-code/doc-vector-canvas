@@ -1,5 +1,6 @@
 import { IText, StaticCanvas } from 'fabric'
 import { connectionResolver, indexObjects, isConnector } from '../core/connections'
+import type { ImageAsset } from '../core/imageAssets'
 import type { CanvasObject } from '../core/scene'
 import { applySceneObject, makeSceneObject } from '../editor/fabricObjects'
 
@@ -54,7 +55,7 @@ function textInkBounds(view: IText, context: CanvasRenderingContext2D): Bounds[]
   })
 }
 
-export function selectionSvg(objects: readonly CanvasObject[], ids: readonly string[]) {
+export function selectionSvg(objects: readonly CanvasObject[], ids: readonly string[], assets: readonly ImageAsset[] = []) {
   const selected = selectionInPaintOrder(objects, ids)
   if (!selected.length) return
   const element = document.createElement('canvas')
@@ -63,10 +64,11 @@ export function selectionSvg(objects: readonly CanvasObject[], ids: readonly str
     const context = canvas.getContext()
     // A selected connector still resolves against the full scene, including unselected hosts.
     const resolver = connectionResolver(indexObjects(objects))
+    const images = new Map(assets.map(asset => [asset.id, asset]))
     const bounds = selected.flatMap(object => {
       const data = object.type === 'text' ? { ...object, text: validXmlText(object.text), fontFamily: validXmlText(object.fontFamily) }
         : isConnector(object) ? resolver.display(object) : object
-      const view = makeSceneObject(data)
+      const view = makeSceneObject(data, images)
       applySceneObject(view, data)
       canvas.add(view)
       const box = view.getBoundingRect()

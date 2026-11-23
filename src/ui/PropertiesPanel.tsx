@@ -80,7 +80,7 @@ export function PropertiesPanel({ object, objects, onLocate, onChange, onPreview
         <NumberField key={object.id + ':fontSize'} label="字号" value={object.fontSize} min={8} max={240}
           onPreview={fontSize => onPreview({ fontSize })} onFinish={onFinish} />
         <ColorField label="文字颜色" value={object.color} onPreview={color => onPreview({ color })} onFinish={onFinish} />
-      </> : <>
+      </> : object.type === 'image' ? null : <>
         {'fill' in object && <>
           <ColorField label="填充颜色" value={object.fill === 'transparent' ? '#e0eaf3' : object.fill}
             disabled={object.fill === 'transparent'} onPreview={fill => onPreview({ fill })} onFinish={onFinish} />

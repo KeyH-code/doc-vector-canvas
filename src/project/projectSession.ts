@@ -34,6 +34,10 @@ export function openProject(session: ProjectSession, request: OpenRequest): Open
 
   const decoded = decodeProject(request.source)
   if (!decoded.ok) return { status: 'error', code: decoded.code, message: decoded.message, session }
-  if (!request.discardChanges && isProjectDirty(session)) return { status: 'needs-confirmation', session }
-  return { status: 'opened', session: startSession(decoded.scene) }
+  return openDecodedProject(session, decoded.scene, request.discardChanges)
+}
+
+export function openDecodedProject(session: ProjectSession, scene: CanvasScene, discardChanges = false): OpenResult {
+  if (!discardChanges && isProjectDirty(session)) return { status: 'needs-confirmation', session }
+  return { status: 'opened', session: startSession(scene) }
 }

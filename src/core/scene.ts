@@ -1,6 +1,7 @@
 import { boxTypes, type BoxType, type ScenePoint } from './geometry'
 import { bindingKey, ends, type EndpointBinding } from './connections'
 import { maxPathSegments, type LinePath } from './linePaths'
+import type { ImageAsset } from './imageAssets'
 
 type PositionedObject = Readonly<{
   id: string
@@ -35,8 +36,9 @@ export type TextObject = PositionedObject & Readonly<{
   anchorSize?: Readonly<{ width: number; height: number }>
 }>
 
-export type CanvasObject = BoxObject | LineObject | StrokeObject | TextObject
-export type CanvasScene = Readonly<{ id: string; objects: readonly CanvasObject[] }>
+export type ImageObject = PositionedObject & Readonly<{ type: 'image'; assetId: string; width: number; height: number }>
+export type CanvasObject = BoxObject | LineObject | StrokeObject | TextObject | ImageObject
+export type CanvasScene = Readonly<{ id: string; objects: readonly CanvasObject[]; images?: readonly ImageAsset[] }>
 
 const commonKeys = ['id', 'type', 'x', 'y', 'rotation']
 const rectangleKeys = [...commonKeys, 'width', 'height', 'fill', 'stroke', 'strokeWidth']
@@ -122,6 +124,8 @@ export function isCanvasObject(value: unknown): value is CanvasObject {
       (value.type !== 'square' || value.width === value.height) &&
       (value.fill === 'transparent' || isColor(value.fill)) && hasOutline(value)
   }
+  if (value.type === 'image') return hasExactKeys(value, [...commonKeys, 'assetId', 'width', 'height']) &&
+    isNonBlankString(value.assetId) && isPositive(value.width) && isPositive(value.height)
   if (value.type === 'line' || value.type === 'arrow') {
     const present = ends.map(end => bindingKey[end]).filter(key => Object.hasOwn(value, key))
     const path = Object.hasOwn(value, 'path')
@@ -152,7 +156,7 @@ export function createScene(id: string): CanvasScene {
 
 export function sameScene(a: CanvasScene, b: CanvasScene): boolean {
   if (a === b) return true
-  return a.id === b.id && a.objects.length === b.objects.length && a.objects.every((object, index) => {
+  return a.id === b.id && sameField(a.images ?? [], b.images ?? []) && a.objects.length === b.objects.length && a.objects.every((object, index) => {
     const other = b.objects[index]
     return object === other || (object.type === other.type &&
       Object.keys(object).length === Object.keys(other).length &&

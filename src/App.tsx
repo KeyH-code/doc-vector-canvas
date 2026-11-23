@@ -87,7 +87,7 @@ export function App() {
           <div className="stage-head">
             <Toolbar tool={tool} hand={editor.hand} snap={editor.snap} editing={editing} onTool={editor.setTool} onHand={editor.toggleHand} onSnap={editor.toggleSnap}
               onUndo={editor.undo} onRedo={editor.redo}
-              canUndo={editor.canUndo} canRedo={editor.canRedo} />
+              canUndo={editor.canUndo} canRedo={editor.canRedo} onImage={editor.importImage} imageBusy={editor.importing || editor.reading} />
             {editor.notice && <div className="notice" role="alert">
               <Icon name="notice" /><span><b>{editor.notice.title}</b> {editor.notice.message}</span>
             </div>}

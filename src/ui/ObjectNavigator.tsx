@@ -17,6 +17,7 @@ export const objectKinds = {
   curveArrow: { label: '曲线箭头', icon: 'arrow' },
   stroke: { label: '笔迹', icon: 'pen' },
   text: { label: '文字', icon: 'text' },
+  image: { label: '图片', icon: 'image' },
 } as const
 
 export type ObjectKind = keyof typeof objectKinds
