@@ -2,6 +2,8 @@
 
 > **执行要求：** 原 E0–E8 计划已批准并分批执行；参赛者已审核通过 E5a–E5c 和 E6–E8 的对应增量，授权先单独提交补充计划，再用 `executing-plans` 开始 E5a–E5c。扩展三、D 和实际 Agent 接入不在本批实施范围内。
 
+> **2026-11-23 范围调整：** E6 已验收并提交；取消 E7，成品表格走 E6 的图片路径。E8 下列改动仅移除对 E7 的依赖；后续开发等参赛者另行说明，不因本次文档提交启动。
+
 **目标：** 把固定尺寸的矢量画布扩展为可导航、可组织、可建立显式关系的图示编辑器，并证明后续程序能复用同一份图元、连接和命令数据。
 
 **架构：** 世界坐标中的项目场景、窗口中的观看视图、Fabric 的临时绘制分离。图元、连接与本地图片资源由核心持有；React 负责可见状态与操作，Fabric 负责显示与手势，UI 与程序编辑共用核心命令及历史。新版本读取既有项目，选区导出和撤销仍以正式场景为准。
@@ -21,8 +23,8 @@
 | --- | --- | --- |
 | **扩展一：无限画布与对象目录** | E0–E2 | v1 项目仍可读；视图能移动、缩放、调整工作区；从目录能选中、定位和检查对象。 |
 | **扩展二：新增图形与显式连接** | E3–E5 | 新图形可像原有对象一样操作；先验证矩形/椭圆，再覆盖新图形；关系随变换、重开和撤销保持。 |
-| **扩展二补充：线型与全元素吸附** | E5a–E5c | 「线条」「箭头」各有三种线型；旧折线可从选择模式继续延伸；已实现的所有元素均可被吸附，图片和表格在 E6、E7 加入时同步接入。 |
-| **扩展三：图片、表格与程序验证** | E6–E8 | 离线保存重开媒体，图片和表格可作为连接目标；没有模型也能读取新线型和显式关系、受限编辑并整体撤销。 |
+| **扩展二补充：线型与全元素吸附** | E5a–E5c | 「线条」「箭头」各有三种线型；旧折线可从选择模式继续延伸；已实现的所有元素均可被吸附，图片外框在 E6 接入。 |
+| **扩展三：图片与程序验证** | E6、E8（E7 取消） | 离线保存重开图片，成品表格可作为图片素材使用；没有模型也能读取新线型和显式关系、受限编辑并整体撤销。 |
 
 ## 2. 扩展一：无限画布与对象目录
 
@@ -81,7 +83,7 @@
 
 ## 4. 扩展二补充：线型与全元素吸附
 
-不改 E3–E5 的既有测试证据；补充批在现有实现之上开发，验收时同时复核 E3–E5。E6、E7 随新图元交付它们的吸附能力，E8 统一验证。
+不改 E3–E5 的既有测试证据；补充批在现有实现之上开发，验收时同时复核 E3–E5。图片外框吸附由 E6 交付，E8 统一验证。
 
 ### E5a · 线条/箭头分组与可续画折线（E-15、E-16）
 
@@ -104,10 +106,10 @@
 **文件：** 修改 `src/core/connections.ts`、`src/core/linePaths.ts`、`src/core/commands.ts`、`src/core/scene.ts`、`src/editor/FabricSurface.ts`、`src/editor/fabricObjects.ts`、`src/ui/ConnectionsPanel.tsx`、`src/ui/PropertiesPanel.tsx`、`src/project/projectFile.ts`、`src/export/selectionSvg.ts`；扩展 `tests/unit/connections.test.ts`、`tests/unit/commands.test.ts`、`tests/unit/projectFile.test.ts`、`tests/e2e/connector-editing.spec.ts`、`tests/e2e/selection-export.spec.ts`。
 
 1. 先测文字外框、笔迹路径、三类线型路径的任意位置；用「图形 ← 主线 ← 分支」验证跨线随动、移除主线保留分支、仅导出分支、复制选中整链与仅复制分支。测试自引用、循环依赖、失效路径段和越权删除整批拒绝；旧 v1/v2 自由线不会自动增加关系。
-2. 按对象类型提供局部锚点：闭合图形用既有轮廓规则，文字用随其移动、缩放、旋转及排版更新的外框，笔迹和线条/箭头用可见路径的稳定段标识及段内参数（不吸附到箭尖装饰的两翼）。图片、表格外框接口在 E6/E7 实装。延用固定屏幕距离、最近优先、同距取上层和显式确认规则；中间折点不是新增绑定端点。连线互接按依赖顺序解析，禁止自引用和让几何互相依赖的闭环；由普通图形和多根箭头组成的环形流程仍允许。画布、侧栏、文件和导出共用关系，不逐帧写入派生几何。
-3. 运行 `npm.cmd run test:unit -- tests/unit/linePaths.test.ts tests/unit/connections.test.ts tests/unit/commands.test.ts tests/unit/projectFile.test.ts`、`npm.cmd run test:e2e -- line-tools.spec.ts connector-editing.spec.ts selection-export.spec.ts`，再跑全量检查。**补充批停点：** 验收旧折线续画、曲线平滑、从线身引分支、随动/删除/撤销/重开；图片和表格吸附留到 E6/E7 的各自验收，不提前新增媒体。
+2. 按对象类型提供局部锚点：闭合图形用既有轮廓规则，文字用随其移动、缩放、旋转及排版更新的外框，笔迹和线条/箭头用可见路径的稳定段标识及段内参数（不吸附到箭尖装饰的两翼）。图片外框在 E6 实装。延用固定屏幕距离、最近优先、同距取上层和显式确认规则；中间折点不是新增绑定端点。连线互接按依赖顺序解析，禁止自引用和让几何互相依赖的闭环；由普通图形和多根箭头组成的环形流程仍允许。画布、侧栏、文件和导出共用关系，不逐帧写入派生几何。
+3. 运行 `npm.cmd run test:unit -- tests/unit/linePaths.test.ts tests/unit/connections.test.ts tests/unit/commands.test.ts tests/unit/projectFile.test.ts`、`npm.cmd run test:e2e -- line-tools.spec.ts connector-editing.spec.ts selection-export.spec.ts`，再跑全量检查。**补充批停点：** 验收旧折线续画、曲线平滑、从线身引分支、随动/删除/撤销/重开；图片外框吸附在 E6 验收。
 
-## 5. 扩展三：图片、表格与程序验证
+## 5. 扩展三：图片与程序验证
 
 ### E6 · 本地图片与离线资源（E-11、E-12、E-18）
 
@@ -118,13 +120,9 @@
 3. 在浏览器真正下载，给新会话先加载本地应用，再切到离线状态、打开文件并继续改图；不把需要首次加载应用的静态站点当成离线启动功能。将混合图示 SVG 插入目标 Windows PowerPoint，确认透明背景及图片可见。运行 `npm.cmd run test:unit -- tests/unit/imageAssets.test.ts tests/unit/projectFile.test.ts`、`npm.cmd run test:e2e -- canvas-media.spec.ts selection-export.spec.ts`。
 4. 接入 E5c 的外框吸附，PNG 透明区不改变外框。以真实导入图片验证移动、旋转、离线重开后的端点随动，以及删图保线、撤销复接；在 `canvas-media.spec.ts` 增加对应场景。
 
-### E7 · 轻量可编辑表格（E-11、E-12、E-18）
+### E7 · 轻量可编辑表格（已取消，未开工）
 
-**文件：** 新建 `src/core/table.ts`、`src/ui/TableEditor.tsx`、`tests/unit/table.test.ts`；修改 `src/core/scene.ts`、`src/core/commands.ts`、`src/project/projectFile.ts`、`src/editor/fabricObjects.ts`、`src/editor/FabricSurface.ts`、`src/ui/Toolbar.tsx`、`src/ui/ObjectNavigator.tsx`、`src/ui/PropertiesPanel.tsx`、`src/export/selectionSvg.ts`、`tests/e2e/canvas-media.spec.ts`。
-
-1. 红测创建表格、编辑指定单元格、增删行列、保留中文与多行内容、一次表格操作一次撤销。验证坏表格维度、非矩形数据和不可接受的输入不改状态；文件重开后仍能编辑单元格；导出 SVG 中表格保持线条与文字，而非截图。
-2. 表格作为一个独立图元，可选中、移动、缩放、复制；表格编辑时文字输入、删除和撤销快捷键不误触画布。默认 `3×3`，建议最多 `30×20`，不能删到零行零列；正式容量在内容裁切和性能验证后锁定。用同一场景数据生成画布展示和 SVG；不使用 `foreignObject`，不导入 Excel，不做公式、合并单元格。表格整体外框可作为吸附目标，首版不连接到单元格或内部网格；验证编辑行列后外框位置变化、删除和撤销时的关系一致性。
-3. 多浏览器检查表格中文、内容边界、轮廓与表格复制后的独立性；目标 PowerPoint 插入混合 SVG 核对文字和网格。运行 `npm.cmd run test:unit -- tests/unit/table.test.ts tests/unit/projectFile.test.ts` 与 `npm.cmd run test:e2e -- canvas-media.spec.ts selection-export.spec.ts`。
+表格在 Excel 等工具中制作，另存为 PNG 或 JPG 后通过 E6「图片」导入。复用图片的摆放、外框吸附、离线存档和 SVG 内嵌能力。保留 E7 编号用于追溯，不开发独立表格图元、单元格编辑、Excel 文件导入或表格剪贴板解析；图片中的表格在 SVG 里仍是位图，程序不读取其中的单元格。将来若有结构化读表需求，另行规划。
 
 ### E8 · Agent 前置合同与扩展回归（E-13、E-14、E-18）
 
@@ -132,7 +130,7 @@
 
 1. 用「输入 → 处理 → 输出」和额外未选对象写核心测试：按 ID 查询对象和显式关系，区分两端/方向；凡仅有相交或贴边均无关系。按范围改「处理」的位置和一条获授权箭头的样式，未授权对象的数据不变，绑定端自然跟随；一次撤销恢复。测试未知 ID、越权、非法锚点与受限删除触发的跨对象副作用；失败时场景、撤销与重做都不变。
 2. 提供**仅本地、无需模型**的结构化读入口；复用已有受限批次写入口，不给程序开一条绕过场景校验的写通道。区分「被命令写入的对象」与「随关系重新计算、但记录没被改写的对象」。读取时能区分直线、折线、曲线及箭头，并从真实路径区分「接到一条线」与「接到那条线的宿主」；关系由场景推导，不从截图猜测、不另存图数据库。
-3. 正式页面走一次最小闭环：远处放图元、在侧栏定位、续画折线、连接到本地图片和可编辑表格、从一条曲线引出分支；保存后在新会话离线打开并继续改，选择一部分导出 SVG、插入 PowerPoint。保留旧 v1 和 C3 校验，不以自动化代替真实字体、输入法和 PowerPoint 视觉核对。
+3. 正式页面走一次最小闭环：远处放图元、在侧栏定位、续画折线、连接到本地图片（示例使用 Excel 导出的表格 PNG）、从一条曲线引出分支；保存后在新会话离线打开并继续改，选择一部分导出 SVG、插入 PowerPoint。保留旧 v1 和 C3 校验，不以自动化代替真实字体、输入法和 PowerPoint 视觉核对。
 4. 执行 `npm.cmd run test:unit`、`npm.cmd run typecheck`、`npm.cmd run build`、`npm.cmd run test:e2e`。记录提交、环境、实际命令、通过数、失败或未测项到 `results.md`；准备一份测试用扩展示例供审阅，但**不代替 D 的正式原创示例和干净副本验收**。
 
 ## 6. 交付检查和停点
