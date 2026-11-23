@@ -14,7 +14,7 @@ export type SceneCommand = Readonly<{ type: 'create'; object: CanvasObject }> |
 
 export type CommandScope = Readonly<{ sceneId: string; writableIds: readonly string[]; allowCreate?: boolean }>
 
-export type CommandErrorCode = 'duplicate-object' | 'unknown-object' | 'invalid-object' | 'invalid-connection' | 'invalid-image' | 'out-of-scope' | 'invalid-command'
+export type CommandErrorCode = 'duplicate-object' | 'unknown-object' | 'invalid-object' | 'invalid-connection' | 'invalid-image' | 'out-of-scope' | 'invalid-command' | 'unknown-page'
 export type CommandResult = { ok: true; scene: CanvasScene } |
   { ok: false; code: CommandErrorCode; index: number }
 
@@ -29,6 +29,7 @@ function pathCount(object: CanvasObject) {
 
 /** Only trusted callers with access to the whole scene may omit scope. */
 export function applyCommands(scene: CanvasScene, commands: readonly SceneCommand[], scope?: CommandScope): CommandResult {
+  if (scene.document) return { ok: false, code: 'unknown-page', index: 0 }
   const objects = [...scene.objects]
   const assets = new Map((scene.images ?? []).map(asset => [asset.id, asset]))
   let imageEdit = 0

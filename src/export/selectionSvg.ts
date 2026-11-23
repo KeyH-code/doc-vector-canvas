@@ -32,7 +32,7 @@ function validXmlText(text: string) {
   return text.replace(/[^\u0009\u000A\u000D\u0020-\uD7FF\uE000-\uFFFD\u{10000}-\u{10FFFF}]/gu, '\uFFFD')
 }
 
-function textInkBounds(view: IText, context: CanvasRenderingContext2D): Bounds[] {
+export function textInkBounds(view: IText, context: CanvasRenderingContext2D): Bounds[] {
   // Measure the exact runs and baseline positions written by Fabric's SVG exporter.
   const markup = `<svg xmlns="http://www.w3.org/2000/svg">${view.toSVG()}</svg>`
   const text = new DOMParser().parseFromString(markup, 'image/svg+xml').querySelector('text')

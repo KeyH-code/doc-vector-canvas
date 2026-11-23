@@ -6,7 +6,7 @@ export function downloadLocalProject(name: string, content: string) {
   downloadLocalFile(`${name}.json`, content, 'application/json;charset=utf-8')
 }
 
-export function downloadLocalFile(filename: string, content: string, type: string) {
+export function downloadLocalFile(filename: string, content: BlobPart, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }))
   const link = document.createElement('a')
   link.href = url

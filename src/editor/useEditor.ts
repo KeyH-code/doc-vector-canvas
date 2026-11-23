@@ -1,12 +1,16 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ObjectChanges, SceneCommand } from '../core/commands'
 import { captureSelection, isConnector, offsetCopies } from '../core/connections'
-import { redo, submit, undo } from '../core/history'
+import { changedPage, pageScene } from '../core/document'
+import { redo, submitPage, undo } from '../core/history'
 import { imageAssetBytes, maxProjectImageBytes, type ImageAsset } from '../core/imageAssets'
-import type { CanvasObject } from '../core/scene'
+import type { CanvasObject, CanvasScene } from '../core/scene'
+import type { PdfReader } from '../document/pdfImport'
 import { selectionSvg } from '../export/selectionSvg'
+import { exportPdf } from '../export/pdfDocument'
 import { downloadLocalFile, downloadLocalProject, readLocalProject } from '../project/localFiles'
 import { prepareImage, readImageAsset, sharePreparedImage } from '../project/imageImport'
+import { importPdf, prepareDocument } from '../project/documentImport'
 import { decodeProject, encodeProject } from '../project/projectFile'
 import { createProjectSession, isProjectDirty, markProjectSaved, openDecodedProject, type ProjectSession } from '../project/projectSession'
 import { editingShortcut, isTemporaryHandKey } from '../ui/shortcuts'
@@ -17,10 +21,17 @@ const untitled = '未命名项目'
 const discardMessage = '当前项目有未保存的改动。是否放弃改动并继续？'
 type PropertyPreview = { id: string; changes: ObjectChanges }
 type Clipboard = { objects: readonly CanvasObject[]; images: readonly ImageAsset[] }
+type LoadedPdf = { reader: PdfReader; first: HTMLCanvasElement }
 
 export function useEditor(theme: 'light' | 'dark') {
   const [session, setSession] = useState(() => createProjectSession(crypto.randomUUID()))
   const sessionRef = useRef(session)
+  const [pageId, setPageId] = useState<string>()
+  const activePage = useRef<string>(undefined)
+  const [hiddenBackgrounds, setHiddenBackgrounds] = useState<ReadonlySet<string>>(() => new Set())
+  const [loadedPdf, setLoadedPdf] = useState<LoadedPdf>()
+  const [pdfExport, setPdfExport] = useState<{ document: NonNullable<CanvasScene['document']>; reader: PdfReader; current: number }>()
+  const exportModalOpen = useRef(false)
   const [tool, updateTool] = useState<Tool>('select')
   const [hand, setHand] = useState(false)
   const [snap, setSnap] = useState(false)
@@ -35,6 +46,7 @@ export function useEditor(theme: 'light' | 'dark') {
   const [importing, setImporting] = useState(false)
   const projectGeneration = useRef(0)
   const openRequest = useRef(0)
+  const openAbort = useRef<AbortController>(undefined)
   const propertyPreview = useRef<PropertyPreview>(undefined)
   const surface = useRef<FabricSurface>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -47,7 +59,8 @@ export function useEditor(theme: 'light' | 'dark') {
 
   function commit(commands: readonly SceneCommand[], select?: readonly string[]) {
     const current = sessionRef.current
-    const objects = current.history.scene.objects
+    const targetPage = activePage.current
+    const objects = pageScene(current.history.scene, targetPage).objects
     const normalized = commands.map(command => {
       if (command.type !== 'update' || !(['text', 'fontFamily', 'fontSize'] as const).some(key => Object.hasOwn(command.changes, key))) return command
       const previous = objects.find(object => object.id === command.id)
@@ -64,11 +77,12 @@ export function useEditor(theme: 'light' | 'dark') {
     // Serialize measurements only when the user first links legacy text, in the same undo step.
     const anchorMeasurements: SceneCommand[] = objects.flatMap(object => object.type === 'text' && !object.anchorSize && linkedLegacyText.has(object.id)
       ? [{ type: 'update', id: object.id, changes: { anchorSize: measureTextAnchor(object) } }] : [])
-    const result = submit(current.history, [...anchorMeasurements, ...normalized])
+    const result = submitPage(current.history, targetPage, [...anchorMeasurements, ...normalized])
     if (!result.ok || result.history === current.history) return result.ok
-    if (result.history.scene.images) for (const command of commands) {
+    const images = pageScene(result.history.scene, targetPage).images
+    if (images) for (const command of commands) {
       if (command.type !== 'add-image-asset') continue
-      const image = result.history.scene.images.find(asset => asset.id === command.asset.id)
+      const image = images.find(asset => asset.id === command.asset.id)
       if (image) sharePreparedImage(command.asset, image)
     }
     if (select) surface.current?.selectOnRender(select)
@@ -77,6 +91,7 @@ export function useEditor(theme: 'light' | 'dark') {
   }
 
   function finishPropertyPreview(id?: string) {
+    if (exportModalOpen.current) return
     const preview = propertyPreview.current
     if (!preview || (id !== undefined && preview.id !== id)) return
     propertyPreview.current = undefined
@@ -94,7 +109,7 @@ export function useEditor(theme: 'light' | 'dark') {
   function hasPendingProperties() {
     const preview = propertyPreview.current
     if (!preview) return false
-    const object = sessionRef.current.history.scene.objects.find(({ id }) => id === preview.id)
+    const object = currentPageScene().objects.find(({ id }) => id === preview.id)
     return !!object && Object.entries(preview.changes).some(([key, value]) => object[key as keyof CanvasObject] !== value)
   }
 
@@ -114,7 +129,35 @@ export function useEditor(theme: 'light' | 'dark') {
     return () => { surface.current = null; editor.dispose() }
   }, [])
 
-  const { scene, past, future } = session.history
+  const { scene: project, past, future } = session.history
+  const canvasDocument = project.document
+  const page = canvasDocument?.pages.find(entry => entry.id === pageId)
+  const scene = pageScene(project, pageId)
+  const pageWidth = page?.width, pageHeight = page?.height
+  const pageIndex = canvasDocument?.pages.findIndex(entry => entry.id === pageId) ?? -1
+  const backgroundVisible = pageId === undefined || !hiddenBackgrounds.has(pageId)
+  useLayoutEffect(() => {
+    surface.current!.setDocumentPage(pageWidth && pageHeight ? { width: pageWidth, height: pageHeight } : undefined)
+  }, [project.id, pageId, pageWidth, pageHeight])
+  useLayoutEffect(() => { surface.current!.setPageVisible(backgroundVisible) }, [backgroundVisible])
+  useEffect(() => () => { if (loadedPdf) void loadedPdf.reader.close().catch(() => undefined) }, [loadedPdf])
+  useEffect(() => () => openAbort.current?.abort(), [])
+  useEffect(() => {
+    if (!loadedPdf || pageIndex < 0 || !pageId) return
+    const controller = new AbortController()
+    const view = surface.current!
+    const render = async () => {
+      try {
+        const canvas = pageIndex === 0 ? loadedPdf.first : await loadedPdf.reader.render(pageIndex, 1450, controller.signal)
+        if (controller.signal.aborted) return
+        view.setPageBackground(canvas)
+      } catch {
+        if (!controller.signal.aborted) setNotice({ title: '无法显示 PDF 底稿。', message: `第 ${pageIndex + 1} 页渲染失败，编辑内容仍保留。` })
+      }
+    }
+    void render()
+    return () => controller.abort()
+  }, [loadedPdf, pageId, pageIndex])
   useLayoutEffect(() => {
     const view = surface.current!
     view.render(scene)
@@ -160,13 +203,44 @@ export function useEditor(theme: 'light' | 'dark') {
     surface.current?.finishEditing()
     const current = sessionRef.current
     const history = step(current.history)
-    if (history !== current.history) publish({ ...current, history })
+    if (history !== current.history) {
+      const changed = changedPage(current.history.scene, history.scene)
+      if (changed && changed !== activePage.current) selectPage(changed)
+      publish({ ...current, history })
+    }
+  }
+
+  function currentPageScene() {
+    return pageScene(sessionRef.current.history.scene, activePage.current)
+  }
+
+  function switchPage(id: string | undefined) {
+    setPageId(id)
+    activePage.current = id
+  }
+
+  function selectPage(id: string) {
+    if (id === activePage.current || !sessionRef.current.history.scene.document?.pages.some(page => page.id === id)) return
+    finishPropertyPreview()
+    surface.current?.resetInteraction()
+    setHand(false)
+    switchPage(id)
+  }
+
+  function togglePageBackground(id: string) {
+    if (!sessionRef.current.history.scene.document?.pages.some(page => page.id === id)) return
+    setHiddenBackgrounds(previous => {
+      const next = new Set(previous)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
   }
 
   function newProject() {
     if ((isProjectDirty(sessionRef.current) || surface.current?.hasPendingText() || hasPendingProperties()) && !window.confirm(discardMessage)) return
     projectGeneration.current++
     openRequest.current++
+    openAbort.current?.abort()
     setReading(false)
     setImporting(false)
     propertyPreview.current = undefined
@@ -174,6 +248,9 @@ export function useEditor(theme: 'light' | 'dark') {
     surface.current?.resetViewport()
     setHand(false)
     publish(createProjectSession(crypto.randomUUID()))
+    switchPage(undefined)
+    setHiddenBackgrounds(new Set())
+    setLoadedPdf(undefined)
     setProjectName(untitled)
     setNotice(undefined)
   }
@@ -193,35 +270,41 @@ export function useEditor(theme: 'light' | 'dark') {
 
   async function openLocalProject(file: File) {
     const request = ++openRequest.current
+    openAbort.current?.abort()
+    const controller = new AbortController()
+    openAbort.current = controller
     setReading(true)
+    let pdf: LoadedPdf | undefined
+    let adopted = false
     try {
-      let source: string
-      try {
-        source = await readLocalProject(file)
-      } catch {
-        if (request === openRequest.current) showOpenError('无法读取所选项目文件。')
-        return
+      let opened: CanvasScene
+      if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+        const result = await importPdf(file, controller.signal)
+        pdf = result
+        opened = result.scene
+      } else {
+        let source: string
+        try { source = await readLocalProject(file) }
+        catch { throw new Error('无法读取所选项目文件。') }
+        if (request !== openRequest.current) return
+        const decoded = decodeProject(source)
+        if (!decoded.ok) { showOpenError(decoded.message); return }
+        opened = decoded.scene
+        pdf = await prepareDocument(opened, controller.signal)
       }
       if (request !== openRequest.current) return
-      const decoded = decodeProject(source)
-      if (!decoded.ok) { showOpenError(decoded.message); return }
-      try {
-        for (const asset of decoded.scene.images ?? []) {
-          await prepareImage(asset)
-          if (request !== openRequest.current) return
-        }
-      } catch (error) {
-        if (request === openRequest.current) showOpenError(error instanceof Error ? error.message : '无法解码项目中的图片。')
-        return
+      for (const asset of allImages(opened)) {
+        await prepareImage(asset)
+        if (request !== openRequest.current) return
       }
       const current = sessionRef.current
       if (isProjectDirty(current) || surface.current?.hasPendingText() || hasPendingProperties()) {
         if (!window.confirm(discardMessage)) return
       }
-      const result = openDecodedProject(current, decoded.scene, true)
+      const result = openDecodedProject(current, opened, true)
       if (result.status !== 'opened') return
-      const openedAssets = result.session.history.scene.images ?? []
-      decoded.scene.images?.forEach((asset, i) => sharePreparedImage(asset, openedAssets[i]))
+      const openedAssets = allImages(result.session.history.scene)
+      allImages(opened).forEach((asset, i) => sharePreparedImage(asset, openedAssets[i]))
       projectGeneration.current++
       setImporting(false)
       propertyPreview.current = undefined
@@ -229,27 +312,41 @@ export function useEditor(theme: 'light' | 'dark') {
       surface.current?.resetViewport()
       setHand(false)
       publish(result.session)
-      setProjectName(file.name.replace(/\.json$/i, '') || untitled)
+      switchPage(result.session.history.scene.document?.pages[0]?.id)
+      setHiddenBackgrounds(new Set())
+      setLoadedPdf(pdf)
+      adopted = true
+      setProjectName(file.name.replace(/\.(json|pdf)$/i, '') || untitled)
       setNotice(undefined)
+    } catch (error) {
+      if (request === openRequest.current) showOpenError(error instanceof Error ? error.message : '文件无法打开。')
     } finally {
+      if (pdf && !adopted) void pdf.reader.close().catch(() => undefined)
       if (request === openRequest.current) setReading(false)
     }
   }
 
+  function cancelOpen() {
+    openRequest.current++
+    openAbort.current?.abort()
+    setReading(false)
+  }
+
   async function importImage(file: File) {
     const generation = projectGeneration.current
+    const startingPage = activePage.current
     setImporting(true)
     try {
       const { asset, width, height } = await readImageAsset(file, crypto.randomUUID())
       const view = surface.current
-      if (generation !== projectGeneration.current || !view) return
+      if (generation !== projectGeneration.current || startingPage !== activePage.current || !view) return
       let idle = view.whenIdle()
       while (idle) {
         await idle
-        if (generation !== projectGeneration.current || view !== surface.current) return
+        if (generation !== projectGeneration.current || startingPage !== activePage.current || view !== surface.current) return
         idle = view.whenIdle()
       }
-      const current = sessionRef.current.history.scene.images ?? []
+      const current = currentPageScene().images ?? []
       const existing = current.find(entry => entry.mime === asset.mime && entry.data === asset.data)
       if (!existing && current.reduce((bytes, entry) => bytes + imageAssetBytes(entry), imageAssetBytes(asset)) > maxProjectImageBytes) {
         throw new Error('此项目的图片原始数据合计不能超过 40 MiB。')
@@ -280,14 +377,14 @@ export function useEditor(theme: 'light' | 'dark') {
   function exportSelection() {
     if (reading || editing || !selectedIds.length) return
     try {
-      const source = sessionRef.current.history.scene.objects
+      const current = currentPageScene(), source = current.objects
       const preview = propertyPreview.current
       const objects = preview ? source.map(object => {
         if (object.id !== preview.id) return object
         const projected = { ...object, ...preview.changes }
         return projected.type === 'text' ? { ...projected, anchorSize: measureTextAnchor(projected) } : projected
       }) : source
-      const svg = selectionSvg(objects, selectedIds, sessionRef.current.history.scene.images)
+      const svg = selectionSvg(objects, selectedIds, current.images)
       if (!svg) return
       downloadLocalFile(`${projectName}-选区.svg`, svg, 'image/svg+xml;charset=utf-8')
       setNotice(undefined)
@@ -298,7 +395,7 @@ export function useEditor(theme: 'light' | 'dark') {
 
   function copy() {
     finishPropertyPreview()
-    const current = sessionRef.current.history.scene
+    const current = currentPageScene()
     const objects = captureSelection(current.objects, selectedIds)
     const used = new Set(objects.flatMap(object => object.type === 'image' ? [object.assetId] : []))
     if (objects.length) setClipboard({ objects, images: (current.images ?? []).filter(asset => used.has(asset.id)) })
@@ -307,7 +404,7 @@ export function useEditor(theme: 'light' | 'dark') {
   function paste() {
     if (!clipboard.objects.length) return
     finishPropertyPreview()
-    const current = sessionRef.current.history.scene.images ?? []
+    const current = currentPageScene().images ?? []
     const remap = new Map<string, string>()
     const commands: SceneCommand[] = []
     for (const asset of clipboard.images) {
@@ -336,9 +433,35 @@ export function useEditor(theme: 'light' | 'dark') {
     commit([{ type: 'update', id, changes }])
   }
 
+  function beginPdfExport() {
+    if (canvasDocument && loadedPdf && pageIndex >= 0 && !reading && !editing) {
+      const preview = propertyPreview.current
+      const pages = preview ? canvasDocument.pages.map((page, index) => index !== pageIndex ? page : { ...page,
+        scene: { ...page.scene, objects: page.scene.objects.map(object => {
+          if (object.id !== preview.id) return object
+          const data = { ...object, ...preview.changes }
+          return data.type === 'text' ? { ...data, anchorSize: measureTextAnchor(data) } : data
+        }) },
+      }) : canvasDocument.pages
+      exportModalOpen.current = true
+      setPdfExport({ document: { ...canvasDocument, pages }, reader: loadedPdf.reader, current: pageIndex })
+    }
+  }
+
+  async function downloadPdf(indexes: readonly number[]) {
+    if (!pdfExport) return
+    const bytes = await exportPdf(pdfExport.document, pdfExport.reader, indexes)
+    downloadLocalFile(`${projectName}${indexes.length === 1 ? `-第${indexes[0] + 1}页` : ''}.pdf`, Uint8Array.from(bytes), 'application/pdf')
+  }
+
+  function closePdfExport() {
+    exportModalOpen.current = false
+    setPdfExport(undefined)
+  }
+
   useLayoutEffect(() => {
     function handleKey(event: KeyboardEvent) {
-      if (editing || surface.current?.isComposing()) return
+      if (pdfExport || editing || surface.current?.isComposing()) return
       if (event.key === 'Escape' && !event.defaultPrevented && surface.current?.cancelExtension()) { event.preventDefault(); return }
       if (isTemporaryHandKey(event)) {
         event.preventDefault()
@@ -370,11 +493,17 @@ export function useEditor(theme: 'light' | 'dark') {
     return () => { window.removeEventListener('keyup', keyup); window.removeEventListener('blur', release) }
   }, [])
 
-  return { scene, tool, setTool, selected, editing, canvas, host, canUndo, canRedo, canPaste: clipboard.objects.length > 0,
+  return { scene, document: canvasDocument, pageId, pageIndex, selectPage, hiddenBackgrounds, togglePageBackground, pdfReader: loadedPdf?.reader,
+    pdfExport, beginPdfExport, downloadPdf, closePdfExport,
+    tool, setTool, selected, editing, canvas, host, canUndo, canRedo, canPaste: clipboard.objects.length > 0,
     undo: () => travel(undo), redo: () => travel(redo), copy, paste, remove, previewProperties, finishPropertyPreview, updateProperties,
-    projectName, notice, reading, importing, newProject, saveProject, openLocalProject, importImage, exportSelection,
+    projectName, notice, reading, importing, newProject, saveProject, openLocalProject, cancelOpen, importImage, exportSelection,
     hand, snap, zoom, continuing, toggleHand, toggleSnap: () => setSnap(active => !active),
     zoomTo: (zoom: number) => surface.current?.setZoom(zoom), fitContent: () => surface.current?.fitContent(),
     selectFromNavigator, locateFromNavigator,
     hasPendingProperties, isComposing: () => surface.current?.isComposing() ?? false }
+}
+
+function allImages(scene: CanvasScene) {
+  return scene.document ? scene.document.pages.flatMap(page => page.scene.images ?? []) : scene.images ?? []
 }

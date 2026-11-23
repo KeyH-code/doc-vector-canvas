@@ -1,5 +1,6 @@
 import { applyCommands, type CommandErrorCode, type CommandScope, type SceneCommand } from './commands'
 import type { CanvasScene } from './scene'
+import { documentImagesWithinLimit } from './document'
 
 export type SceneHistory = Readonly<{
   scene: CanvasScene
@@ -17,8 +18,25 @@ export function createHistory(scene: CanvasScene): SceneHistory {
 export function submit(history: SceneHistory, commands: readonly SceneCommand[], scope?: CommandScope): Submission {
   const result = applyCommands(history.scene, commands, scope)
   if (!result.ok) return { ...result, history }
-  if (result.scene === history.scene) return { ok: true, history }
-  return { ok: true, history: { scene: result.scene, past: [...history.past, history.scene], future: [] } }
+  return record(history, result.scene)
+}
+
+export function submitPage(history: SceneHistory, pageId: string | undefined, commands: readonly SceneCommand[], scope?: CommandScope): Submission {
+  const document = history.scene.document
+  if (!document) return pageId === undefined ? submit(history, commands, scope) : { ok: false, code: 'unknown-page', index: 0, history }
+  const page = document.pages.find(page => page.id === pageId)
+  if (!page) return { ok: false, code: 'unknown-page', index: 0, history }
+  const result = applyCommands(page.scene, commands, scope)
+  if (!result.ok) return { ...result, history }
+  if (result.scene === page.scene) return { ok: true, history }
+  const pages = document.pages.map(entry => entry === page ? { ...entry, scene: result.scene } : entry)
+  if (!documentImagesWithinLimit(pages)) return { ok: false, code: 'invalid-image', index: 0, history }
+  return record(history, { ...history.scene, document: { ...document, pages } })
+}
+
+function record(history: SceneHistory, next: CanvasScene): Submission {
+  if (next === history.scene) return { ok: true, history }
+  return { ok: true, history: { scene: next, past: [...history.past, history.scene], future: [] } }
 }
 
 export function undo(history: SceneHistory): SceneHistory {

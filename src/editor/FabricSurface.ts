@@ -70,6 +70,9 @@ export class FabricSurface {
   private readonly resize: ResizeObserver
   private readonly listeners = new AbortController()
   private viewport?: Viewport
+  private documentPage?: Readonly<{ width: number; height: number }>
+  private pageBackground?: CanvasImageSource
+  private pageVisible = true
   private size = { width: 1, height: 1 }
   private hand = false
   private temporaryHand = false
@@ -116,7 +119,8 @@ export class FabricSurface {
       if (width < 1 || height < 1) return
       this.size = { width, height }
       canvas.setDimensions({ width, height })
-      this.showViewport(this.viewport ?? initialViewport(this.size))
+      if (this.viewport) this.showViewport(this.viewport)
+      else this.resetViewport()
     })
     this.resize.observe(host)
     const layer = canvas.upperCanvasEl
@@ -272,6 +276,18 @@ export class FabricSurface {
       })
     }
     canvas.on('after:render', ({ ctx }) => { if (ctx === canvas.getContext()) this.drawEndpointIndicators(ctx) })
+    canvas.on('before:render', ({ ctx }) => {
+      if (!this.documentPage || ctx !== canvas.getContext()) return
+      const { width, height } = this.documentPage
+      ctx.save()
+      ctx.transform(...canvas.viewportTransform)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
+      if (this.pageVisible && this.pageBackground) ctx.drawImage(this.pageBackground, 0, 0, width, height)
+      ctx.strokeStyle = '#8a98ae'; ctx.lineWidth = 1 / (this.viewport?.zoom ?? 1)
+      ctx.strokeRect(0, 0, width, height)
+      ctx.restore()
+    })
     canvas.on('object:modified', ({ target, transform }) => {
       if (this.syncing || !transform) return // IText also emits a modification on edit exit, without a transform.
       const grouped = target instanceof ActiveSelection
@@ -312,7 +328,25 @@ export class FabricSurface {
   }
 
   resetViewport() {
-    this.showViewport(initialViewport(this.size))
+    const page = this.documentPage
+    this.showViewport((page && fitViewport(this.size, { ...page, left: 0, top: 0 })) ?? initialViewport(this.size))
+  }
+
+  setDocumentPage(page?: Readonly<{ width: number; height: number }>) {
+    if (!page && !this.documentPage) return
+    this.documentPage = page
+    this.pageBackground = undefined
+    if (this.size.width > 1 && this.size.height > 1) this.resetViewport()
+  }
+
+  setPageBackground(image?: CanvasImageSource) {
+    this.pageBackground = image
+    this.canvas.requestRenderAll()
+  }
+
+  setPageVisible(visible: boolean) {
+    this.pageVisible = visible
+    this.canvas.requestRenderAll()
   }
 
   setZoom(zoom: number) {
@@ -342,7 +376,8 @@ export class FabricSurface {
   }
 
   fitContent(id?: string) {
-    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+    const page = id === undefined ? this.documentPage : undefined
+    let left = page ? 0 : Infinity, top = page ? 0 : Infinity, right = page?.width ?? -Infinity, bottom = page?.height ?? -Infinity
     for (const [objectId, { view }] of this.objects) {
       if (id !== undefined && objectId !== id) continue
       const box = view.getBoundingRect()

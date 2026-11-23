@@ -26,9 +26,10 @@ export function objectKind(object: CanvasObject): ObjectKind {
   return object.type === 'line' ? object.path.kind : object.path.kind === 'polyline' ? 'polylineArrow' : 'curveArrow'
 }
 
-export function ObjectNavigator({ objects, selected, editing, onSelect, onLocate }: {
+export function ObjectNavigator({ objects, selected, editing, onSelect, onLocate, embedded = false }: {
   objects: readonly CanvasObject[]; selected: ReadonlySet<string>; editing: boolean
   onSelect: (ids: readonly string[], extend: boolean) => void; onLocate: (id: string) => void
+  embedded?: boolean
 }) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<ObjectKind>>(() => new Set())
   const groups = new Map<ObjectKind, CanvasObject[]>()
@@ -46,10 +47,7 @@ export function ObjectNavigator({ objects, selected, editing, onSelect, onLocate
     })
   }
 
-  return <section aria-labelledby="content-heading">
-    <div className="object-head"><h2 id="content-heading">项目内容</h2><span>{objects.length} 个对象</span></div>
-    <div className="canvas-entry"><Icon name="page" />当前画布</div>
-    {groups.size === 0 ? <p className="object-empty">暂无对象</p> : (
+  const content = groups.size === 0 ? <p className="object-empty">暂无对象</p> : (
       <ul className="object-list" aria-label="画布对象">
         {(Object.keys(objectKinds) as ObjectKind[]).map(type => {
           const members = groups.get(type)
@@ -85,6 +83,10 @@ export function ObjectNavigator({ objects, selected, editing, onSelect, onLocate
           </li>
         })}
       </ul>
-    )}
+  )
+  return embedded ? content : <section aria-labelledby="content-heading">
+    <div className="object-head"><h2 id="content-heading">项目内容</h2><span>{objects.length} 个对象</span></div>
+    <div className="canvas-entry"><Icon name="page" />当前画布</div>
+    {content}
   </section>
 }
