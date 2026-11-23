@@ -2,13 +2,13 @@
 
 > **执行要求：** 参赛者已确认底稿、裁切规则并批准开始开发。使用 `executing-plans` 和 `test-driven-development`，按批实现与验收。先交 M0–M2；PPTX 的系统组件和第二批实施等后续确认。本文提交、实现提交和推送分别确认。
 
-> **当前进度：** M0–M2（含 PDF 左栏调整）已由参赛者验收，获准提交。下一项只准备 M3 的渲染选型；先拿到样例证据，再决定正式接入方式。
+> **当前进度：** M0–M2（含 PDF 左栏调整）已验收并提交。M3 的 PPTX 导入与离线重开、M4 的 PPTX 导出均已验收，获准本地提交。下一项是 E8 的按页读取、受限编辑与回归验证；尚未开始。详见[验证记录](document-canvas/results.md#m4--pptx-导出)。
 
 **目标：** 从「打开项目」导入 PDF/PPTX，每页成为带独立编辑层的画布；保存项目可离线重开，导出原格式的整份、当前页或指定页码范围。
 
 **架构：** 文档由原始页面信息、锁定底稿和每页既有场景组成。画布允许抓手进入页外，项目保存完整编辑层，文档导出按原页边框裁切。原文档格式的读取、渲染和导出分别用适配器处理，保留现有场景及关系模型。
 
-**技术栈：** 沿用当前 React、Fabric、TypeScript、Vite、Vitest、Playwright 与 Windows 桌面浏览器基线。PDF 候选：PDF.js 本地预览，能够复用原页内容流的 PDF 写出库（例如 `pdf-lib`，经实测后锁定）；PPTX 写出候选 PptxGenJS，渲染端另设验证门。候选不是已选依赖，不增加云服务，也不默认安装本地组件。
+**技术栈：** 沿用当前 React、Fabric、TypeScript、Vite、Vitest、Playwright 与 Windows 桌面浏览器基线。PDF 用 PDF.js 预览、pdf-lib 写出；PPTX 用 `@web-ppt/core` 生成静态底稿、PptxGenJS 写出，不增加云服务，也不要求安装本地转换组件。
 
 关联：[需求](document-canvas/requirements.md) · [验收清单](document-canvas/validation.md) · [原画布扩展与 E8](2026-11-22-personal-mode-expansion.md)。
 
@@ -51,7 +51,7 @@
 
 **文件：** 试验矩阵写入 `doc/plans/personal-mode/document-canvas/results.md`；新建 `src/document/pptxImport.ts`、`tests/e2e/pptx-document.spec.ts`，补 `tests/fixtures/documents/`；确认渲染路线后再确定系统集成位置和更新 `package.json`、锁文件或本地组件文档。
 
-**选型准备：** 本机已确认存在 PowerPoint `16.0.14334.21048` 和桌面自动化注册项，尚未运行转换；未在 PATH 或常用目录发现 LibreOffice。优先用已有 PowerPoint 为 16:9、4:3 样例生成离线基准，再对照候选路线的中文换行、母版、图片、表格和图表。若 PowerPoint 转换效果合格，再单独评估如何从浏览器的「打开项目」调用本机转换（网页不能直接调用桌面 PowerPoint），以及无 Office 的环境如何处理。首次导入的依赖与离线重开的依赖分开记录；不安装组件、不上传样例、不预先确定路线。
+**选型结果（已确认）：** 两种比例各三页均用已有 PowerPoint 生成原生 PNG 基准。采用 `@web-ppt/core` `0.8.0` 纯浏览器首次导入，项目内嵌每页 PNG，PowerPoint 仅用于对照验收。库保留样例的母版、页序和隐藏页；柱形图的比例保留，但刻度与排版不是像素级一致。默认 PowerPoint 转 PDF 会漏隐藏页，不作为正式导入链路。
 
 1. 先验真实 `.pptx`：宽屏、4:3 分别成稿；包含中文、母版、嵌入图片、图表、普通表格和静态复杂元素。逐页比较页数、尺寸和可辨识布局；记录缺字体、动画/视频未保留等限制及所需环境。宏、外链、文件损坏、渲染缺页、转换取消或超时均有明确提示，不发布半成品。
 2. 验收同意后，将选定引擎接入「打开 PPTX」。预览为各页锁定图片，不拆母版、SmartArt 或单元格；打开项目保存各页底图和编辑层，不需要原 `.pptx` 或渲染组件才能再次打开项目。演示稿原生文本提取独立于渲染，先评估，不能提取的页明确标记不支持；不把 OCR 作为 M3 门槛。

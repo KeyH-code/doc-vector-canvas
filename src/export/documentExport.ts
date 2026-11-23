@@ -1,5 +1,5 @@
-type PageSize = Readonly<{ width: number; height: number }>
-type Bounds = PageSize & Readonly<{ left: number; top: number }>
+export type PageSize = Readonly<{ width: number; height: number }>
+export type PageBounds = PageSize & Readonly<{ left: number; top: number }>
 
 export function pageRange(source: string, total: number): number[] | undefined {
   const selected = new Set<number>()
@@ -13,7 +13,7 @@ export function pageRange(source: string, total: number): number[] | undefined {
   return [...selected].sort((a, b) => a - b)
 }
 
-export function pageVisibility(page: PageSize, bounds: Bounds) {
+export function pageVisibility(page: PageSize, bounds: PageBounds) {
   const right = bounds.left + bounds.width, bottom = bounds.top + bounds.height
   if (right <= 0 || bottom <= 0 || bounds.left >= page.width || bounds.top >= page.height) return 'outside'
   if (bounds.left >= 0 && bounds.top >= 0 && right <= page.width && bottom <= page.height) return 'inside'

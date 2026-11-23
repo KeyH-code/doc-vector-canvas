@@ -66,13 +66,14 @@ export function App() {
         <div className="sidebar-inner" id="sidebar-content" hidden={!expanded}>
           <section className="file-panel" aria-label="项目操作">
             <b className="file-name">{editor.projectName}</b>
-            <FileMenu busy={editor.reading} canExport={selected.length > 0 && !editing}
+            <FileMenu busy={editor.reading} openProgress={editor.openProgress} canExport={selected.length > 0 && !editing}
               onSave={editor.saveProject} onNew={editor.newProject} onOpen={editor.openLocalProject} onExport={editor.exportSelection}
-              onPdf={editor.document ? editor.beginPdfExport : undefined} canPdf={!editing} onCancelOpen={editor.cancelOpen} />
+              documentKind={editor.document?.source.kind} onDocumentExport={editor.beginDocumentExport}
+              canDocumentExport={!editing && !editor.importing} onCancelOpen={editor.cancelOpen} />
           </section>
           <div className="sidebar-scroll">
             {editor.document ? <PageNavigator pages={editor.document.pages} active={editor.pageId} hiddenBackgrounds={editor.hiddenBackgrounds}
-              onPage={editor.selectPage} onToggleBackground={editor.togglePageBackground} reader={editor.pdfReader}>
+              onPage={editor.selectPage} onToggleBackground={editor.togglePageBackground} reader={editor.pageReader}>
               <ObjectNavigator key={scene.id} objects={scene.objects} selected={selectedIds} editing={editing} embedded
                 onSelect={editor.selectFromNavigator} onLocate={editor.locateFromNavigator} />
             </PageNavigator> : <ObjectNavigator key={scene.id} objects={scene.objects} selected={selectedIds} editing={editing}
@@ -102,7 +103,7 @@ export function App() {
           <div className="sheet-zone">
             <section className="sheet" aria-label="画布">
               <div ref={editor.host} className="canvas-host" data-testid="canvas-stage"><canvas ref={editor.canvas} /></div>
-              <span className="sheet-label" aria-hidden="true">{editor.document ? `PDF / ${String(editor.pageIndex + 1).padStart(2, '0')}` : 'PERSONAL / 01'}</span>
+              <span className="sheet-label" aria-hidden="true">{editor.document ? `${editor.document.source.kind.toUpperCase()} / ${String(editor.pageIndex + 1).padStart(2, '0')}` : 'PERSONAL / 01'}</span>
               {!editor.document && size === 0 && tool === 'select' && !editing && <div className="empty">
                 <span className="empty-icon"><Icon name="rect" /></span>
                 <b>从一张空白画布开始</b><span>选择「矩形」拖出图形，或用「文字」加一行说明。</span>
@@ -120,7 +121,7 @@ export function App() {
           <ViewportControls editor={root} editing={editing} zoom={editor.zoom} onZoom={editor.zoomTo} onFit={editor.fitContent} />
         </footer>
       </section>
-      {editor.pdfExport && <DocumentExportDialog {...editor.pdfExport} onDownload={editor.downloadPdf} onClose={editor.closePdfExport} />}
+      {editor.documentExport && <DocumentExportDialog {...editor.documentExport} onDownload={editor.downloadDocument} onClose={editor.closeDocumentExport} />}
     </main>
   )
 }

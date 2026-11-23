@@ -1,18 +1,8 @@
 import { AnnotationMode, getDocument, PDFWorker, type PDFDocumentProxy, type RenderTask } from 'pdfjs-dist'
 import assets, { workerSource } from 'virtual:bundled-pdf-assets'
+import { fromBase64 } from '../core/base64'
 import { acceptablePageSize, maxDocumentBytes, maxDocumentPages, maxSourceText, type DocumentPage } from '../core/document'
-
-export function fromBase64(data: string): Uint8Array<ArrayBuffer> {
-  const decoded = atob(data), bytes = new Uint8Array(decoded.length)
-  for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i)
-  return bytes
-}
-
-export function toBase64(data: Uint8Array) {
-  const items: string[] = []
-  for (let i = 0; i < data.length; i += 32768) items.push(String.fromCharCode(...data.subarray(i, i + 32768)))
-  return btoa(items.join(''))
-}
+import type { PageReader } from './pageReader'
 
 class BundledBinaryDataFactory {
   async fetch({ kind, filename }: { kind: string; filename: string }) {
@@ -22,11 +12,7 @@ class BundledBinaryDataFactory {
   }
 }
 
-export type PdfReader = {
-  proxy: PDFDocumentProxy
-  close: () => Promise<void>
-  render: (index: number, longSide: number, signal?: AbortSignal) => Promise<HTMLCanvasElement>
-}
+export type PdfReader = PageReader & { proxy: PDFDocumentProxy }
 
 export async function openPdf(bytes: Uint8Array, signal?: AbortSignal): Promise<PdfReader> {
   if (!bytes.length || bytes.length > maxDocumentBytes) throw new Error('PDF 文件不能超过 32 MiB。')

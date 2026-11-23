@@ -1,6 +1,7 @@
-import { maxDocumentBytes } from '../core/document'
+import { fromBase64, toBase64 } from '../core/base64'
+import { isPdfDocument, maxDocumentBytes } from '../core/document'
 import type { CanvasScene } from '../core/scene'
-import { describePdf, fromBase64, openPdf, toBase64, validatePdfPages } from '../document/pdfImport'
+import { describePdf, openPdf, validatePdfPages } from '../document/pdfImport'
 
 export async function importPdf(file: File, signal?: AbortSignal) {
   if (file.size > maxDocumentBytes) throw new Error('PDF 文件不能超过 32 MiB。')
@@ -21,8 +22,8 @@ export async function importPdf(file: File, signal?: AbortSignal) {
   }
 }
 
-export async function prepareDocument(scene: CanvasScene, signal?: AbortSignal) {
-  if (!scene.document) return
+export async function preparePdf(scene: CanvasScene, signal?: AbortSignal) {
+  if (!scene.document || !isPdfDocument(scene.document)) return
   const reader = await openPdf(fromBase64(scene.document.source.data), signal)
   const abort = () => { void reader.close().catch(() => undefined) }
   signal?.addEventListener('abort', abort, { once: true })

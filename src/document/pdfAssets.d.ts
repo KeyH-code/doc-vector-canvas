@@ -3,3 +3,8 @@ declare module 'virtual:bundled-pdf-assets' {
   export const workerSource: string
   export default assets
 }
+
+declare module 'virtual:pptx-render-frame' {
+  const script: string
+  export default script
+}

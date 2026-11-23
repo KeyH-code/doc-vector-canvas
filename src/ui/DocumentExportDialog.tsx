@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentCanvas } from '../core/document'
-import type { PdfReader } from '../document/pdfImport'
+import type { PageReader } from '../document/pageReader'
 import { pageRange } from '../export/documentExport'
-import { overlayWarnings, previewPdfPage } from '../export/pdfDocument'
+import { overlayWarnings, previewDocumentPage } from '../export/pageOverlay'
+import { rasterizedPptxObject } from '../export/pptxDocument'
 
 export function DocumentExportDialog({ document, reader, current, onDownload, onClose }: {
-  document: DocumentCanvas; reader: PdfReader; current: number
+  document: DocumentCanvas; reader: PageReader; current: number
   onDownload: (indexes: readonly number[]) => Promise<void>; onClose: () => void
 }) {
   const [scope, setScope] = useState<'all' | 'current' | 'range'>('all')
@@ -15,6 +16,7 @@ export function DocumentExportDialog({ document, reader, current, onDownload, on
   const [error, setError] = useState('')
   const [previewError, setPreviewError] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
+  const pptx = document.source.kind === 'pptx', format = document.source.kind.toUpperCase()
   useEffect(() => { dialog.current?.showModal() }, [])
   const indexes = useMemo(() => scope === 'all' ? document.pages.map((_, i) => i)
     : scope === 'current' ? [current] : pageRange(range, document.pages.length), [scope, range, document, current])
@@ -24,21 +26,22 @@ export function DocumentExportDialog({ document, reader, current, onDownload, on
     setPreviewError(false)
     if (first === undefined) return
     const controller = new AbortController()
-    void previewPdfPage(reader, document.pages[first], first, controller.signal).then(image => {
+    void previewDocumentPage(reader, document.pages[first], first, controller.signal).then(image => {
       if (!controller.signal.aborted) setPreview(image)
     }, () => { if (!controller.signal.aborted) setPreviewError(true) })
     return () => controller.abort()
   }, [document, reader, first])
   const warnings = useMemo(() => indexes?.flatMap(i => {
-    const counts = overlayWarnings(document.pages[i])
-    return counts.outside || counts.partial ? [{ page: i + 1, ...counts }] : []
-  }), [document, indexes])
+    const counts = overlayWarnings(document.pages[i], pptx ? rasterizedPptxObject : undefined)
+    return counts.outside || counts.partial || counts.raster ? [{ page: i + 1, ...counts }] : []
+  }), [document, indexes, pptx])
   return <dialog ref={dialog} className="document-export" aria-labelledby="document-export-title" onCancel={event => {
     event.preventDefault()
     if (!busy) onClose()
   }}>
-    <h2 id="document-export-title">导出 PDF</h2>
+    <h2 id="document-export-title">导出 {format}</h2>
     <p>只导出原页范围。页外草稿留在项目中，不会自动加页或扩页。</p>
+    {pptx && <p>底稿为静态背景。页内的新增文字、基本图形和直线可在 PowerPoint 中编辑；复杂或跨页边对象转为图片。</p>}
     <div className="document-export-scopes" aria-label="导出范围" role="group">
       <button type="button" disabled={busy} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>整份</button>
       <button type="button" disabled={busy} aria-pressed={scope === 'current'} onClick={() => setScope('current')}>当前页</button>
@@ -48,7 +51,8 @@ export function DocumentExportDialog({ document, reader, current, onDownload, on
     {!indexes && <p role="alert">页码无效，请输入 1～{document.pages.length}，例如 1,3-5。</p>}
     {indexes && <p>导出 {indexes.length} 页{indexes.length > 1 ? '，按原顺序排列' : ''}。</p>}
     {warnings && warnings.length > 0 && <ul className="document-export-warnings">
-      {warnings.map(item => <li key={item.page}>第 {item.page} 页：估计 {item.outside} 个完全在页外，{item.partial} 个跨过页边。</li>)}
+      {warnings.map(item => <li key={item.page}>第 {item.page} 页：估计 {item.outside} 个完全在页外，{item.partial} 个跨过页边。
+        {item.raster > 0 && ` ${item.raster} 个可见对象转为图片。`}</li>)}
     </ul>}
     {first !== undefined && <div className="document-export-preview">{preview ? <img src={preview} alt={`第 ${first + 1} 页导出预览`} />
       : <span>{previewError ? '预览无法显示，可返回检查页面。' : '正在生成首个导出页的预览…'}</span>}</div>}
@@ -60,11 +64,12 @@ export function DocumentExportDialog({ document, reader, current, onDownload, on
         setBusy(true); setError('')
         try { await onDownload(indexes); onClose() }
         catch (reason) {
-          setError(reason instanceof Error && reason.message.startsWith('PDF 编辑层合计')
-            ? reason.message : '未生成 PDF；项目没有修改。请缩小导出范围后重试。')
+          setError(reason instanceof Error && (reason.message.startsWith(`${format} 编辑层合计`) ||
+              reason.message.startsWith('PPTX 页面尺寸') || reason.message.startsWith('PPTX 新增图片'))
+            ? reason.message : `未生成 ${format}；项目没有修改。请缩小导出范围后重试。`)
         }
         finally { setBusy(false) }
-      }}>{busy ? '正在导出…' : '下载 PDF'}</button>
+      }}>{busy ? '正在导出…' : `下载 ${format}`}</button>
     </div>
   </dialog>
 }

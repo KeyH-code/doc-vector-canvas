@@ -1,16 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ObjectChanges, SceneCommand } from '../core/commands'
 import { captureSelection, isConnector, offsetCopies } from '../core/connections'
-import { changedPage, pageScene } from '../core/document'
+import { changedPage, isPdfDocument, pageScene, type DocumentCanvas, type PdfSource, type PptxSource } from '../core/document'
 import { redo, submitPage, undo } from '../core/history'
 import { imageAssetBytes, maxProjectImageBytes, type ImageAsset } from '../core/imageAssets'
 import type { CanvasObject, CanvasScene } from '../core/scene'
 import type { PdfReader } from '../document/pdfImport'
+import type { PageReader } from '../document/pageReader'
+import { importPptx, pptxMime, preparePptx } from '../document/pptxImport'
 import { selectionSvg } from '../export/selectionSvg'
 import { exportPdf } from '../export/pdfDocument'
+import { exportPptx } from '../export/pptxDocument'
 import { downloadLocalFile, downloadLocalProject, readLocalProject } from '../project/localFiles'
 import { prepareImage, readImageAsset, sharePreparedImage } from '../project/imageImport'
-import { importPdf, prepareDocument } from '../project/documentImport'
+import { importPdf, preparePdf } from '../project/documentImport'
 import { decodeProject, encodeProject } from '../project/projectFile'
 import { createProjectSession, isProjectDirty, markProjectSaved, openDecodedProject, type ProjectSession } from '../project/projectSession'
 import { editingShortcut, isTemporaryHandKey } from '../ui/shortcuts'
@@ -21,7 +24,11 @@ const untitled = '未命名项目'
 const discardMessage = '当前项目有未保存的改动。是否放弃改动并继续？'
 type PropertyPreview = { id: string; changes: ObjectChanges }
 type Clipboard = { objects: readonly CanvasObject[]; images: readonly ImageAsset[] }
-type LoadedPdf = { reader: PdfReader; first: HTMLCanvasElement }
+type LoadedDocument = { reader: PageReader; first: HTMLCanvasElement; pdfReader?: PdfReader }
+type DocumentExport = { current: number } & (
+  { kind: 'pdf'; document: DocumentCanvas<PdfSource>; reader: PdfReader } |
+  { kind: 'pptx'; document: DocumentCanvas<PptxSource>; reader: PageReader }
+)
 
 export function useEditor(theme: 'light' | 'dark') {
   const [session, setSession] = useState(() => createProjectSession(crypto.randomUUID()))
@@ -29,8 +36,8 @@ export function useEditor(theme: 'light' | 'dark') {
   const [pageId, setPageId] = useState<string>()
   const activePage = useRef<string>(undefined)
   const [hiddenBackgrounds, setHiddenBackgrounds] = useState<ReadonlySet<string>>(() => new Set())
-  const [loadedPdf, setLoadedPdf] = useState<LoadedPdf>()
-  const [pdfExport, setPdfExport] = useState<{ document: NonNullable<CanvasScene['document']>; reader: PdfReader; current: number }>()
+  const [loadedDocument, setLoadedDocument] = useState<LoadedDocument>()
+  const [documentExport, setDocumentExport] = useState<DocumentExport>()
   const exportModalOpen = useRef(false)
   const [tool, updateTool] = useState<Tool>('select')
   const [hand, setHand] = useState(false)
@@ -43,6 +50,7 @@ export function useEditor(theme: 'light' | 'dark') {
   const [projectName, setProjectName] = useState(untitled)
   const [notice, setNotice] = useState<{ title: string; message: string }>()
   const [reading, setReading] = useState(false)
+  const [openProgress, setOpenProgress] = useState<string>()
   const [importing, setImporting] = useState(false)
   const projectGeneration = useRef(0)
   const openRequest = useRef(0)
@@ -140,24 +148,24 @@ export function useEditor(theme: 'light' | 'dark') {
     surface.current!.setDocumentPage(pageWidth && pageHeight ? { width: pageWidth, height: pageHeight } : undefined)
   }, [project.id, pageId, pageWidth, pageHeight])
   useLayoutEffect(() => { surface.current!.setPageVisible(backgroundVisible) }, [backgroundVisible])
-  useEffect(() => () => { if (loadedPdf) void loadedPdf.reader.close().catch(() => undefined) }, [loadedPdf])
+  useEffect(() => () => { if (loadedDocument) void loadedDocument.reader.close().catch(() => undefined) }, [loadedDocument])
   useEffect(() => () => openAbort.current?.abort(), [])
   useEffect(() => {
-    if (!loadedPdf || pageIndex < 0 || !pageId) return
+    if (!loadedDocument || pageIndex < 0 || !pageId) return
     const controller = new AbortController()
     const view = surface.current!
     const render = async () => {
       try {
-        const canvas = pageIndex === 0 ? loadedPdf.first : await loadedPdf.reader.render(pageIndex, 1450, controller.signal)
+        const canvas = pageIndex === 0 ? loadedDocument.first : await loadedDocument.reader.render(pageIndex, 1450, controller.signal)
         if (controller.signal.aborted) return
         view.setPageBackground(canvas)
       } catch {
-        if (!controller.signal.aborted) setNotice({ title: '无法显示 PDF 底稿。', message: `第 ${pageIndex + 1} 页渲染失败，编辑内容仍保留。` })
+        if (!controller.signal.aborted) setNotice({ title: '无法显示文档底稿。', message: `第 ${pageIndex + 1} 页渲染失败，编辑内容仍保留。` })
       }
     }
     void render()
     return () => controller.abort()
-  }, [loadedPdf, pageId, pageIndex])
+  }, [loadedDocument, pageId, pageIndex])
   useLayoutEffect(() => {
     const view = surface.current!
     view.render(scene)
@@ -242,6 +250,7 @@ export function useEditor(theme: 'light' | 'dark') {
     openRequest.current++
     openAbort.current?.abort()
     setReading(false)
+    setOpenProgress(undefined)
     setImporting(false)
     propertyPreview.current = undefined
     surface.current?.resetInteraction()
@@ -250,7 +259,7 @@ export function useEditor(theme: 'light' | 'dark') {
     publish(createProjectSession(crypto.randomUUID()))
     switchPage(undefined)
     setHiddenBackgrounds(new Set())
-    setLoadedPdf(undefined)
+    setLoadedDocument(undefined)
     setProjectName(untitled)
     setNotice(undefined)
   }
@@ -274,14 +283,24 @@ export function useEditor(theme: 'light' | 'dark') {
     const controller = new AbortController()
     openAbort.current = controller
     setReading(true)
-    let pdf: LoadedPdf | undefined
+    setOpenProgress(undefined)
+    let loaded: LoadedDocument | undefined
     let adopted = false
     try {
       let opened: CanvasScene
       if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
         const result = await importPdf(file, controller.signal)
-        pdf = result
+        loaded = { ...result, pdfReader: result.reader }
         opened = result.scene
+      } else if (/\.pptx$/i.test(file.name) || file.type === pptxMime) {
+        setOpenProgress('正在读取 PPTX…')
+        const result = await importPptx(file, controller.signal, (page, total) => {
+          if (request === openRequest.current) setOpenProgress(`正在生成底稿：${page} / ${total}`)
+        })
+        loaded = result
+        opened = result.scene
+      } else if (/\.(pptm|ppt)$/i.test(file.name)) {
+        throw new Error('只支持 .pptx，不支持旧版 .ppt 或含宏的 .pptm。')
       } else {
         let source: string
         try { source = await readLocalProject(file) }
@@ -290,7 +309,11 @@ export function useEditor(theme: 'light' | 'dark') {
         const decoded = decodeProject(source)
         if (!decoded.ok) { showOpenError(decoded.message); return }
         opened = decoded.scene
-        pdf = await prepareDocument(opened, controller.signal)
+        if (opened.document?.source.kind === 'pptx') loaded = await preparePptx(opened.document.source.backgrounds, controller.signal)
+        else {
+          const pdf = await preparePdf(opened, controller.signal)
+          if (pdf) loaded = { ...pdf, pdfReader: pdf.reader }
+        }
       }
       if (request !== openRequest.current) return
       for (const asset of allImages(opened)) {
@@ -314,15 +337,15 @@ export function useEditor(theme: 'light' | 'dark') {
       publish(result.session)
       switchPage(result.session.history.scene.document?.pages[0]?.id)
       setHiddenBackgrounds(new Set())
-      setLoadedPdf(pdf)
+      setLoadedDocument(loaded)
       adopted = true
-      setProjectName(file.name.replace(/\.(json|pdf)$/i, '') || untitled)
+      setProjectName(file.name.replace(/\.(json|pdf|pptx)$/i, '') || untitled)
       setNotice(undefined)
     } catch (error) {
       if (request === openRequest.current) showOpenError(error instanceof Error ? error.message : '文件无法打开。')
     } finally {
-      if (pdf && !adopted) void pdf.reader.close().catch(() => undefined)
-      if (request === openRequest.current) setReading(false)
+      if (loaded && !adopted) void loaded.reader.close().catch(() => undefined)
+      if (request === openRequest.current) { setReading(false); setOpenProgress(undefined) }
     }
   }
 
@@ -330,6 +353,7 @@ export function useEditor(theme: 'light' | 'dark') {
     openRequest.current++
     openAbort.current?.abort()
     setReading(false)
+    setOpenProgress(undefined)
   }
 
   async function importImage(file: File) {
@@ -433,8 +457,8 @@ export function useEditor(theme: 'light' | 'dark') {
     commit([{ type: 'update', id, changes }])
   }
 
-  function beginPdfExport() {
-    if (canvasDocument && loadedPdf && pageIndex >= 0 && !reading && !editing) {
+  function beginDocumentExport() {
+    if (canvasDocument && loadedDocument && pageIndex >= 0 && !reading && !importing && !editing) {
       const preview = propertyPreview.current
       const pages = preview ? canvasDocument.pages.map((page, index) => index !== pageIndex ? page : { ...page,
         scene: { ...page.scene, objects: page.scene.objects.map(object => {
@@ -443,25 +467,32 @@ export function useEditor(theme: 'light' | 'dark') {
           return data.type === 'text' ? { ...data, anchorSize: measureTextAnchor(data) } : data
         }) },
       }) : canvasDocument.pages
+      if (isPdfDocument(canvasDocument)) {
+        if (!loadedDocument.pdfReader) return
+        setDocumentExport({ kind: 'pdf', document: { ...canvasDocument, pages }, reader: loadedDocument.pdfReader, current: pageIndex })
+      } else if (canvasDocument.source.kind === 'pptx') {
+        setDocumentExport({ kind: 'pptx', document: { source: canvasDocument.source, pages }, reader: loadedDocument.reader, current: pageIndex })
+      } else return
       exportModalOpen.current = true
-      setPdfExport({ document: { ...canvasDocument, pages }, reader: loadedPdf.reader, current: pageIndex })
     }
   }
 
-  async function downloadPdf(indexes: readonly number[]) {
-    if (!pdfExport) return
-    const bytes = await exportPdf(pdfExport.document, pdfExport.reader, indexes)
-    downloadLocalFile(`${projectName}${indexes.length === 1 ? `-第${indexes[0] + 1}页` : ''}.pdf`, Uint8Array.from(bytes), 'application/pdf')
+  async function downloadDocument(indexes: readonly number[]) {
+    if (!documentExport) return
+    const { kind, document, reader } = documentExport
+    const bytes = kind === 'pdf' ? Uint8Array.from(await exportPdf(document, reader, indexes)) : await exportPptx(document, indexes)
+    downloadLocalFile(`${projectName}${indexes.length === 1 ? `-第${indexes[0] + 1}页` : ''}.${kind}`, bytes,
+      kind === 'pdf' ? 'application/pdf' : pptxMime)
   }
 
-  function closePdfExport() {
+  function closeDocumentExport() {
     exportModalOpen.current = false
-    setPdfExport(undefined)
+    setDocumentExport(undefined)
   }
 
   useLayoutEffect(() => {
     function handleKey(event: KeyboardEvent) {
-      if (pdfExport || editing || surface.current?.isComposing()) return
+      if (documentExport || editing || surface.current?.isComposing()) return
       if (event.key === 'Escape' && !event.defaultPrevented && surface.current?.cancelExtension()) { event.preventDefault(); return }
       if (isTemporaryHandKey(event)) {
         event.preventDefault()
@@ -493,11 +524,11 @@ export function useEditor(theme: 'light' | 'dark') {
     return () => { window.removeEventListener('keyup', keyup); window.removeEventListener('blur', release) }
   }, [])
 
-  return { scene, document: canvasDocument, pageId, pageIndex, selectPage, hiddenBackgrounds, togglePageBackground, pdfReader: loadedPdf?.reader,
-    pdfExport, beginPdfExport, downloadPdf, closePdfExport,
+  return { scene, document: canvasDocument, pageId, pageIndex, selectPage, hiddenBackgrounds, togglePageBackground, pageReader: loadedDocument?.reader,
+    documentExport, beginDocumentExport, downloadDocument, closeDocumentExport,
     tool, setTool, selected, editing, canvas, host, canUndo, canRedo, canPaste: clipboard.objects.length > 0,
     undo: () => travel(undo), redo: () => travel(redo), copy, paste, remove, previewProperties, finishPropertyPreview, updateProperties,
-    projectName, notice, reading, importing, newProject, saveProject, openLocalProject, cancelOpen, importImage, exportSelection,
+    projectName, notice, reading, openProgress, importing, newProject, saveProject, openLocalProject, cancelOpen, importImage, exportSelection,
     hand, snap, zoom, continuing, toggleHand, toggleSnap: () => setSnap(active => !active),
     zoomTo: (zoom: number) => surface.current?.setZoom(zoom), fitContent: () => surface.current?.fitContent(),
     selectFromNavigator, locateFromNavigator,

@@ -1,7 +1,7 @@
 import { hasExactKeys, isCanvasObject, isDataRecord, isNonBlankString, type CanvasObject, type CanvasScene } from '../core/scene'
 import { invalidConnector, isConnector } from '../core/connections'
 import { imageAssetBytes, imageAssetsForObjects, isImageAsset, maxProjectImageBytes, type ImageAsset } from '../core/imageAssets'
-import { acceptablePageSize, documentImagesWithinLimit, isPdfData, maxDocumentPages, maxSourceText, type DocumentPage } from '../core/document'
+import { acceptablePageSize, documentImagesWithinLimit, isPdfData, maxDocumentPages, maxSourceText, validPptxBackgrounds, type DocumentPage } from '../core/document'
 
 const format = 'document-vector-canvas'
 const version = 2
@@ -64,8 +64,10 @@ function decodeDocument(scene: unknown): ProjectFileResult {
   if (!isDataRecord(scene) || !hasExactKeys(scene, ['id', 'document']) || !isNonBlankString(scene.id)) return fail('invalid-document')
   const document = scene.document
   if (!isDataRecord(document) || !hasExactKeys(document, ['source', 'pages']) || !isDataRecord(document.source) ||
-      !hasExactKeys(document.source, ['kind', 'data']) || document.source.kind !== 'pdf' || !isPdfData(document.source.data) ||
       !Array.isArray(document.pages) || document.pages.length === 0 || document.pages.length > maxDocumentPages) return fail('invalid-document')
+  const source = document.source
+  if (source.kind === 'pdf' ? !hasExactKeys(source, ['kind', 'data']) || !isPdfData(source.data)
+    : source.kind !== 'pptx' || !hasExactKeys(source, ['kind', 'backgrounds'])) return fail('invalid-document')
   const ids = new Set<string>(), pages: DocumentPage[] = []
   for (const item of document.pages) {
     if (!isDataRecord(item) || !hasExactKeys(item, ['id', 'width', 'height', 'text', 'scene']) || !isNonBlankString(item.id) || ids.has(item.id) ||
@@ -78,7 +80,13 @@ function decodeDocument(scene: unknown): ProjectFileResult {
     pages.push({ id: item.id, width: item.width, height: item.height, text: item.text, scene: page.scene })
   }
   if (!documentImagesWithinLimit(pages)) return fail('invalid-image')
-  return { ok: true, scene: { id: scene.id, objects: [], document: { source: { kind: 'pdf', data: document.source.data }, pages } } }
+  if (source.kind === 'pptx' && validPptxBackgrounds(source.backgrounds, pages)) {
+    return { ok: true, scene: { id: scene.id, objects: [], document: { source: { kind: 'pptx', backgrounds: source.backgrounds }, pages } } }
+  }
+  if (source.kind === 'pdf' && typeof source.data === 'string') {
+    return { ok: true, scene: { id: scene.id, objects: [], document: { source: { kind: 'pdf', data: source.data }, pages } } }
+  }
+  return fail('invalid-document')
 }
 
 function decodeScene(scene: unknown, fileVersion: 1 | 2): ProjectFileResult {

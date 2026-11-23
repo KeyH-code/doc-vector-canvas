@@ -33,9 +33,25 @@ describe('文档画布项目', () => {
     const saved = encodeProject(changed.history.scene)
     const parsed = JSON.parse(saved)
     expect(parsed.version).toBe(3)
-    expect(saved.split(project.document!.source.data)).toHaveLength(2)
+    expect(saved.split(pdfFixture().toString('base64'))).toHaveLength(2)
     expect(decodeProject(saved)).toEqual({ ok: true, scene: changed.history.scene })
     parsed.scene.document.pages.push(parsed.scene.document.pages[0])
     expect(decodeProject(JSON.stringify(parsed))).toMatchObject({ ok: false, code: 'invalid-document' })
+  })
+
+  it('PPTX 存档只能包含一一对应、尺寸一致的 PNG 底稿', () => {
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAIAAAA7ljmRAAAAE0lEQVR4nGP8//8/AwwwwVnoHABvLQMDNeDq7AAAAABJRU5ErkJggg=='
+    const pages = ['first', 'second'].map(id => ({ id, width: 720, height: 540, text: null, scene: { id, objects: [] } }))
+    const scene: CanvasScene = { id: 'deck', objects: [], document: { source: { kind: 'pptx', backgrounds: [png, png] }, pages } }
+    const stored = encodeProject(scene)
+    expect(decodeProject(stored)).toEqual({ ok: true, scene })
+    const corrupted = JSON.parse(stored)
+    corrupted.scene.document.source.backgrounds.pop()
+    expect(decodeProject(JSON.stringify(corrupted))).toMatchObject({ ok: false, code: 'invalid-document' })
+    corrupted.scene.document.source.backgrounds.push(png.slice(0, 48))
+    expect(decodeProject(JSON.stringify(corrupted))).toMatchObject({ ok: false, code: 'invalid-document' })
+    corrupted.scene.document.source.backgrounds[1] = png
+    corrupted.scene.document.pages[1].width = 728
+    expect(decodeProject(JSON.stringify(corrupted))).toMatchObject({ ok: false, code: 'invalid-document' })
   })
 })

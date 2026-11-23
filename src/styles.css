@@ -91,6 +91,8 @@ button:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px;
 .export-action { width: 100%; min-height: 34px; margin-top: 8px; border: 1px solid var(--control-line); border-radius: 8px; background: transparent; color: var(--accent); font-size: 12px; }
 .export-action:not(:disabled):hover { background: var(--active-bg); }
 .export-action:disabled { color: var(--muted); border-color: var(--line); }
+.open-progress { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.pptx-render-frame { position: fixed; inset: 0 auto auto 0; width: 1px; height: 1px; border: 0; opacity: 0; pointer-events: none; }
 .object-head, .canvas-entry { display: flex; align-items: center; gap: 7px; }
 .object-head { justify-content: space-between; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
 .object-head h2 { margin: 0; font: inherit; font-weight: 600; }

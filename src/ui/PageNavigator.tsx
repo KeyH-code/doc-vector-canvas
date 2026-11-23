@@ -1,9 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { DocumentPage } from '../core/document'
-import type { PdfReader } from '../document/pdfImport'
+import type { PageReader } from '../document/pageReader'
 import { Icon } from './Icon'
 
-function PageThumb({ reader, index }: { reader: PdfReader; index: number }) {
+function PageThumb({ reader, index }: { reader: PageReader; index: number }) {
   const element = useRef<HTMLSpanElement>(null)
   const [source, setSource] = useState<string>()
   useEffect(() => {
@@ -26,7 +26,7 @@ type PageMenu = { id: string; label: string; x: number; y: number; trigger: HTML
 
 export function PageNavigator({ pages, active, hiddenBackgrounds, onPage, onToggleBackground, reader, children }: {
   pages: readonly DocumentPage[]; active?: string; hiddenBackgrounds: ReadonlySet<string>
-  onPage: (id: string) => void; onToggleBackground: (id: string) => void; reader?: PdfReader; children: ReactNode
+  onPage: (id: string) => void; onToggleBackground: (id: string) => void; reader?: PageReader; children: ReactNode
 }) {
   const objectRegion = useId()
   const [collapsed, setCollapsed] = useState(false)

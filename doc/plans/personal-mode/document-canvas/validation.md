@@ -1,6 +1,6 @@
 # Personal Mode 文档画布 · 验收清单
 
-**状态：** 验收标准；已执行的 PDF 部分见[验证记录](results.md)。关联：[需求](requirements.md) · [实施计划](../2026-11-23-personal-mode-document-canvas.md)。
+**状态：** 验收标准；已执行的 PDF、PPTX 导入和 PPTX 导出部分见[验证记录](results.md)。关联：[需求](requirements.md) · [实施计划](../2026-11-23-personal-mode-document-canvas.md)。
 
 | 验收项 | 操作 | 通过标准 |
 | --- | --- | --- |
@@ -16,6 +16,7 @@
 ### 批次与证据
 
 - **M0–M2：** 先交多页 PDF 测试项目、整份和单页下载件，请参赛者实际验证 DV-01～DV-06 的 PDF 部分。
-- **M3–M4：** 先确认 PPTX 渲染保真与本地依赖，再交整份和单页 PPTX、可编辑项目和 Windows PowerPoint 检查记录，补齐 DV-01～DV-05 的 PPTX 部分及 DV-07。
+- **M3：** 用 16:9 与 4:3 的真实文稿从「打开项目」导入，核对包括隐藏页在内的页序、原尺寸和静态底稿；在不同页画图，保存项目并断网重开。损坏、宏、加密、外链或取消转换不替换现项目。此停点不要求 PPTX 写出。
+- **M4：** 交整份和单页 PPTX、可编辑项目和 Windows PowerPoint 检查记录，补齐 DV-04、DV-05 和 DV-07 的 PPTX 导出部分。
 - **E8：** 合并 DV-08 和[原画布回归](../canvas-expansion/validation.md)，保留真实 Windows 中文输入法和 PowerPoint 核对。D 仍单独确认。
 - 证据记录在本目录 [results.md](results.md)，含基线、命令、依赖版本、导出文件、失败或未测项。全量命令：`npm.cmd run test:unit`、`npm.cmd run typecheck`、`npm.cmd run build`、`npm.cmd run test:e2e`。
